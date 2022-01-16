@@ -1,10 +1,11 @@
 xyscope.xcodeproj
-Info.plist
 .qmake.stash
 .DS_Store
 .xcode/
 Debug/
+Release/
 Makefile
 main.moc
 moc_predefs.h
-xyscope.app/
+*.app/
+*.o
