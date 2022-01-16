@@ -17,6 +17,7 @@
 
 #include <fftw3.h>
 
+#define FRAME_SIZE 16384
 class AudioInfo : public QIODevice
 {
     Q_OBJECT
@@ -94,7 +95,7 @@ AudioInfo::AudioInfo(const QAudioFormat &format)
     default:
         break;
     }
-    m_dataFrame = new qint16[8192];
+    m_dataFrame = new qint16[FRAME_SIZE];
 }
 
 void AudioInfo::start()
@@ -125,11 +126,11 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
         const int numSamples = len / sampleBytes;
 
         
-        m_dataMutex->lock();
+//        m_dataMutex->lock();
         memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
 //        qint16 maxValue = 0;
 //        const unsigned char *ptr = reinterpret_cast<const unsigned char *>(data);
-
+//
 //        qint16 value = 0;
 //        for (int i = 0; i < numSamples; ++i) {
 //            for (int j = 0; j < m_format.channelCount(); ++j) {
@@ -173,7 +174,7 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
 //        maxValue = qMin(maxValue, m_maxAmplitude);
 //        m_level = qreal(maxValue) / m_maxAmplitude;
         m_dataLen = numSamples * m_format.channelCount();
-        m_dataMutex->unlock();
+//        m_dataMutex->unlock();
     }
 
     
@@ -191,13 +192,13 @@ public:
     {
         m_valMutex = new QMutex;
         m_dataMutex = new QMutex;
-        in   = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * 8192);
-        m_data = new qint16[8192];
+        in   = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
+        m_data = new qint16[FRAME_SIZE];
         setBackgroundRole(QPalette::Base);
         setAutoFillBackground(true);
 
-        setMinimumHeight(450);
-        setMinimumWidth(450);
+        setMinimumHeight(600);
+        setMinimumWidth(600);
     }
     
     QMutex * dataMutex() { return m_dataMutex; }
@@ -227,17 +228,17 @@ public:
 
         fftw_execute(inPlan);
 
-        for(int32_t n = 0; n < N/2 ; n++) {
-            in[n][0] *= 2;
-            in[n][1] *= 2;
-        }
-        for(int32_t n = N/2; n < N ; n++) {
-            in[n][0] = 0;
-            in[n][1] = 0;
-        }
+//        for(int32_t n = 0; n < N/2 ; n++) {
+//            in[n][0] *= 2;
+//            in[n][1] *= 2;
+//        }
+//        for(int32_t n = N/2; n < N ; n++) {
+//            in[n][0] = 0;
+//            in[n][1] = 0;
+//        }
 
         outPlan = fftw_plan_dft_1d(N, in, in, FFTW_BACKWARD, FFTW_ESTIMATE);
-        fftw_execute(outPlan);
+//        fftw_execute(outPlan);
         // Use 'out' for something
 
 
@@ -248,18 +249,20 @@ public:
         if(!m_valMutex->tryLock()) {
             return;
         }
+        m_doRefresh = 0;
         for(int32_t n = 0; n < N ; n++) {
             x0 = x;
             y0 = y;
-            y = qMax(0,qMin(89,qFloor(in[n][0]*90 + 45)));
-            x = qMax(0,qMin(89,qFloor(in[n][1]*90 + 45)));
+            y = qFloor(in[n][0]*m_maxY + m_maxY/2);
+            x = qFloor(in[n][1]*m_maxX + m_maxX/2);
             
-            if(x > 45 && x0 <= 45 && y > 45 && qAbs(x-45) + qAbs(y-45) > 10) {
+            if(x > m_maxX/2 && x0 <= m_maxX/2 && y > m_maxY/2 && qAbs(x-m_maxX/2) + qAbs(y-m_maxY/2) > 40) {
                 trigger_offset = n;
                 m_doRefresh = 1;
             }
             
-            if(m_doRefresh) {
+            if(m_doRefresh && (
+                x >= 0 && x < m_maxX && y >= 0 && y < m_maxY)) {
                 int incr = 127 + qFloor(128 * (qreal) ((n - trigger_offset) % N) / (qreal) N);
                 val[0][x][y] = qMin(val[0][x][y] + incr, 255);
                 val[1][x][y] = 255;
@@ -267,13 +270,13 @@ public:
         }
         fftw_destroy_plan(inPlan);
         fftw_destroy_plan(outPlan);
-        for(int r = 0; r < 90; r++) {
-            for (int c = 0; c < 90; c++) {
+        for(int r = 0; r < m_maxX; r++) {
+            for (int c = 0; c < m_maxX; c++) {
                 if(val[0][r][c] > 0) {
-                    val[0][r][c] = qMax(0, val[0][r][c] - 32);
+                    val[0][r][c] = qMax(0, val[0][r][c] - 16);
                 }
                 if(val[1][r][c] > 0) {
-                    val[1][r][c] *= .75;
+                    val[1][r][c] *= .5;
                 }
             }
         }
@@ -306,10 +309,10 @@ protected:
         if(!m_valMutex->tryLock())
             return;
         painter.setPen(Qt::NoPen);
-        for(int r = 0; r < 90; r++) {
-          for (int c = 0; c < 90; c++) {
+        for(int r = 0; r < m_maxX; r++) {
+            for (int c = 0; c < m_maxY; c++) {
               painter.setBrush(QColor(0, val[0][r][c], val[1][r][c]));
-              painter.drawRect(QRect(r*5, c*5, 5, 5));
+              painter.drawRect(QRect(r*3, c*3, 3, 3));
           }
         }
         m_doRefresh = 0;
@@ -326,8 +329,9 @@ private:
     QMutex * m_dataMutex;
     
     int m_doRefresh = 0;
-    
-    int val[2][90][90];
+    int m_maxX = 200;
+    int m_maxY = 200;
+    int val[2][200][200];
     fftw_complex *in;
 };
 
@@ -509,7 +513,7 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     Window window;
-    window.resize(450, 450);
+    window.resize(600, 600);
     window.show();
     return app.exec();
 }
