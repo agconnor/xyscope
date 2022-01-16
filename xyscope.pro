@@ -1,3 +1,4 @@
+QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.15
 QT += widgets multimedia
 
 CONFIG += debug
@@ -9,5 +10,3 @@ INCLUDEPATH += /usr/local/include
 # install
 target.path = .
 INSTALLS += target
-
-include(../shared/shared.pri)

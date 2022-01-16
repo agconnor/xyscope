@@ -17,7 +17,8 @@
 
 #include <fftw3.h>
 
-#define FRAME_SIZE 16384
+#define FRAME_SIZE 4096
+#define FRAME_SPAN 64
 class AudioInfo : public QIODevice
 {
     Q_OBJECT
@@ -206,9 +207,9 @@ public:
     {
         int x, y;
         
-        if(!m_dataMutex->tryLock()) {
-            return;
-        }
+//        if(!m_dataMutex->tryLock()) {
+//            return;
+//        }
         int N = m_dataLen;
 
         // Set N to the number of complex elements in the input array
@@ -221,35 +222,20 @@ public:
             in[n][0] = (qreal) m_data[n] / 32768.0;
             in[n][1] = 0.0;
         }
-        m_dataMutex->unlock();
+//        m_dataMutex->unlock();
         
-        fftw_plan inPlan, outPlan;
-        inPlan = fftw_plan_dft_1d(N, in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+        fftw_plan inPlan;
+        inPlan = fftw_plan_dft_2d(N/FRAME_SPAN, FRAME_SPAN,  in, in, FFTW_FORWARD, FFTW_ESTIMATE);
 
         fftw_execute(inPlan);
 
-//        for(int32_t n = 0; n < N/2 ; n++) {
-//            in[n][0] *= 2;
-//            in[n][1] *= 2;
-//        }
-//        for(int32_t n = N/2; n < N ; n++) {
-//            in[n][0] = 0;
-//            in[n][1] = 0;
-//        }
-
-        outPlan = fftw_plan_dft_1d(N, in, in, FFTW_BACKWARD, FFTW_ESTIMATE);
-//        fftw_execute(outPlan);
-        // Use 'out' for something
-
-
-        
         int trigger_offset = 0;
         int x0 = 0, y0 = 0;
         //n_read = fread((char *) in_, sizeof(short), 2*framesize, stdin);
-        if(!m_valMutex->tryLock()) {
-            return;
-        }
-        m_doRefresh = 0;
+//        if(!m_valMutex->tryLock()) {
+//            return;
+//        }
+        m_doRefresh = 1;
         for(int32_t n = 0; n < N ; n++) {
             x0 = x;
             y0 = y;
@@ -269,7 +255,6 @@ public:
             }
         }
         fftw_destroy_plan(inPlan);
-        fftw_destroy_plan(outPlan);
         for(int r = 0; r < m_maxX; r++) {
             for (int c = 0; c < m_maxX; c++) {
                 if(val[0][r][c] > 0) {
@@ -280,7 +265,7 @@ public:
                 }
             }
         }
-        m_valMutex->unlock();
+//        m_valMutex->unlock();
     }
     
 
@@ -306,8 +291,8 @@ protected:
                                painter.viewport().top()+10,
                                painter.viewport().right()-20,
                                painter.viewport().bottom()-20));
-        if(!m_valMutex->tryLock())
-            return;
+//        if(!m_valMutex->tryLock())
+//            return;
         painter.setPen(Qt::NoPen);
         for(int r = 0; r < m_maxX; r++) {
             for (int c = 0; c < m_maxY; c++) {
@@ -316,7 +301,7 @@ protected:
           }
         }
         m_doRefresh = 0;
-        m_valMutex->unlock();
+//        m_valMutex->unlock();
     }
 
     
