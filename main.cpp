@@ -31,7 +31,6 @@ public:
     void start();
     void stop();
 
-    qreal level() const { return m_level; }
     qint16 * dataFrame() const {return m_dataFrame;}
     quint64 dataLen() const {return m_dataLen;}
 
@@ -41,8 +40,6 @@ public:
 
 private:
     const QAudioFormat m_format;
-    quint32 m_maxAmplitude = 0;
-    qreal m_level = 0.0; // 0.0 <= m_level <= 1.0
     qint16 * m_dataFrame;
     quint64 m_dataLen;
     QMutex * m_dataMutex;
@@ -54,50 +51,7 @@ signals:
 AudioInfo::AudioInfo(const QAudioFormat &format)
     : m_format(format)
 {
-    switch (m_format.sampleSize()) {
-    case 8:
-        switch (m_format.sampleType()) {
-        case QAudioFormat::UnSignedInt:
-            m_maxAmplitude = 255;
-            break;
-        case QAudioFormat::SignedInt:
-            m_maxAmplitude = 127;
-            break;
-        default:
-            break;
-        }
-        break;
-    case 16:
-        switch (m_format.sampleType()) {
-        case QAudioFormat::UnSignedInt:
-            m_maxAmplitude = 65535;
-            break;
-        case QAudioFormat::SignedInt:
-            m_maxAmplitude = 32767;
-            break;
-        default:
-            break;
-        }
-        break;
-
-    case 32:
-        switch (m_format.sampleType()) {
-        case QAudioFormat::UnSignedInt:
-            m_maxAmplitude = 0xffffffff;
-            break;
-        case QAudioFormat::SignedInt:
-            m_maxAmplitude = 0x7fffffff;
-            break;
-        case QAudioFormat::Float:
-            m_maxAmplitude = 0x7fffffff; // Kind of
-        default:
-            break;
-        }
-        break;
-
-    default:
-        break;
-    }
+    m_dataLen = 0;
     m_dataFrame = new qint16[FRAME_SIZE];
 }
 
@@ -121,18 +75,16 @@ qint64 AudioInfo::readData(char *data, qint64 maxlen)
 
 qint64 AudioInfo::writeData(const char *data, qint64 len)
 {
-    if (m_maxAmplitude) {
-        Q_ASSERT(m_format.sampleSize() % 8 == 0);
-        const int channelBytes = m_format.sampleSize() / 8;
-        const int sampleBytes = m_format.channelCount() * channelBytes;
-        Q_ASSERT(len % sampleBytes == 0);
-        const int numSamples = len / sampleBytes;
+    Q_ASSERT(m_format.sampleSize() % 8 == 0);
+    const int channelBytes = m_format.sampleSize() / 8;
+    const int sampleBytes = m_format.channelCount() * channelBytes;
+    Q_ASSERT(len % sampleBytes == 0);
+    const int numSamples = len / sampleBytes;
 
-        if(m_dataMutex->tryLock()) {
-            memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
-            m_dataLen = numSamples * m_format.channelCount();
-            m_dataMutex->unlock();
-        }
+    if(m_dataMutex->tryLock()) {
+        memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
+        m_dataLen = numSamples * m_format.channelCount();
+        m_dataMutex->unlock();
     }
 
     
@@ -168,12 +120,6 @@ public:
             return;
         }
         int N = qMin((qint64) FRAME_SIZE, m_dataLen);
-
-        // Set N to the number of complex elements in the input array
-
-        
-
-        // Initialize 'in' with N complex entries
 
         for(int32_t n = 0; n < N ; n++) {
             in[n][0] = (qreal) m_data[n] / 32768.0;
@@ -404,7 +350,7 @@ void Window::toggleMode()
             [&, io]() {
                 
                 qint64 len = m_audioInput->bytesReady();
-                const int BufferSize = 4096;
+                const int BufferSize = FRAME_SIZE;
                 if (len > BufferSize)
                     len = BufferSize;
 
