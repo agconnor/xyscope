@@ -10,6 +10,7 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QSlider>
+
 #include <QWidget>
 #include <QScopedPointer>
 #include <QAudioInput>
@@ -17,8 +18,9 @@
 
 #include <fftw3.h>
 
-#define FRAME_SIZE 4096
 #define FRAME_SPAN 64
+#define FRAME_SIZE 4096
+
 class AudioInfo : public QIODevice
 {
     Q_OBJECT
@@ -126,56 +128,11 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
         Q_ASSERT(len % sampleBytes == 0);
         const int numSamples = len / sampleBytes;
 
-        
-//        m_dataMutex->lock();
-        memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
-//        qint16 maxValue = 0;
-//        const unsigned char *ptr = reinterpret_cast<const unsigned char *>(data);
-//
-//        qint16 value = 0;
-//        for (int i = 0; i < numSamples; ++i) {
-//            for (int j = 0; j < m_format.channelCount(); ++j) {
-//
-//
-//                if (m_format.sampleSize() == 8 && m_format.sampleType() == QAudioFormat::UnSignedInt) {
-//                    value = *reinterpret_cast<const quint8*>(ptr);
-//                } else if (m_format.sampleSize() == 8 && m_format.sampleType() == QAudioFormat::SignedInt) {
-//                    value = qAbs(*reinterpret_cast<const qint8*>(ptr));
-//                } else if (m_format.sampleSize() == 16 && m_format.sampleType() == QAudioFormat::UnSignedInt) {
-//                    if (m_format.byteOrder() == QAudioFormat::LittleEndian)
-//                        value = qFromLittleEndian<quint16>(ptr) - 32768;
-//                    else
-//                        value = qFromBigEndian<quint16>(ptr) - 32768;
-//                } else if (m_format.sampleSize() == 16 && m_format.sampleType() == QAudioFormat::SignedInt) {
-//                    if (m_format.byteOrder() == QAudioFormat::LittleEndian)
-//                        value = qFromLittleEndian<qint16>(ptr);
-//                    else
-//                        value = qFromBigEndian<qint16>(ptr);
-//                } else if (m_format.sampleSize() == 32 && m_format.sampleType() == QAudioFormat::UnSignedInt) {
-//                    if (m_format.byteOrder() == QAudioFormat::LittleEndian)
-//                        value = (qFromLittleEndian<quint32>(ptr) >> 16)  - 32768;
-//                    else
-//                        value = (qFromBigEndian<quint32>(ptr) >> 16) - 32768;
-//                } else if (m_format.sampleSize() == 32 && m_format.sampleType() == QAudioFormat::SignedInt) {
-//                    if (m_format.byteOrder() == QAudioFormat::LittleEndian)
-//                        value = qFromLittleEndian<qint32>(ptr) >> 16;
-//                    else
-//                        value = qFromBigEndian<qint32>(ptr) >> 16;
-//                } else if (m_format.sampleSize() == 32 && m_format.sampleType() == QAudioFormat::Float) {
-//                    value = (qint32) (*reinterpret_cast<const float*>(ptr) * 0x7fffffff)>>16; // assumes 0-1.0
-//                }
-//
-//                maxValue = qMax(value, maxValue);
-//                ptr += channelBytes;
-//                m_dataFrame[i] = value;
-//            }
-//
-//        }
-
-//        maxValue = qMin(maxValue, m_maxAmplitude);
-//        m_level = qreal(maxValue) / m_maxAmplitude;
-        m_dataLen = numSamples * m_format.channelCount();
-//        m_dataMutex->unlock();
+        if(m_dataMutex->tryLock()) {
+            memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
+            m_dataLen = numSamples * m_format.channelCount();
+            m_dataMutex->unlock();
+        }
     }
 
     
@@ -191,8 +148,8 @@ class RenderArea : public QWidget
 public:
     explicit RenderArea(QWidget *parent) : QWidget(parent)
     {
-        m_valMutex = new QMutex;
-        m_dataMutex = new QMutex;
+        m_valMutex = new QMutex();
+        m_dataMutex = new QMutex();
         in   = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
         m_data = new qint16[FRAME_SIZE];
         setBackgroundRole(QPalette::Base);
@@ -207,10 +164,10 @@ public:
     {
         int x, y;
         
-//        if(!m_dataMutex->tryLock()) {
-//            return;
-//        }
-        int N = m_dataLen;
+        if(!m_dataMutex->tryLock()) {
+            return;
+        }
+        int N = qMin((qint64) FRAME_SIZE, m_dataLen);
 
         // Set N to the number of complex elements in the input array
 
@@ -222,7 +179,7 @@ public:
             in[n][0] = (qreal) m_data[n] / 32768.0;
             in[n][1] = 0.0;
         }
-//        m_dataMutex->unlock();
+        m_dataMutex->unlock();
         
         fftw_plan inPlan;
         inPlan = fftw_plan_dft_2d(N/FRAME_SPAN, FRAME_SPAN,  in, in, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -232,9 +189,9 @@ public:
         int trigger_offset = 0;
         int x0 = 0, y0 = 0;
         //n_read = fread((char *) in_, sizeof(short), 2*framesize, stdin);
-//        if(!m_valMutex->tryLock()) {
-//            return;
-//        }
+        if(!m_valMutex->tryLock()) {
+            return;
+        }
         m_doRefresh = 1;
         for(int32_t n = 0; n < N ; n++) {
             x0 = x;
@@ -265,7 +222,7 @@ public:
                 }
             }
         }
-//        m_valMutex->unlock();
+        m_valMutex->unlock();
     }
     
 
@@ -291,8 +248,8 @@ protected:
                                painter.viewport().top()+10,
                                painter.viewport().right()-20,
                                painter.viewport().bottom()-20));
-//        if(!m_valMutex->tryLock())
-//            return;
+        if(!m_valMutex->tryLock())
+            return;
         painter.setPen(Qt::NoPen);
         for(int r = 0; r < m_maxX; r++) {
             for (int c = 0; c < m_maxY; c++) {
@@ -301,7 +258,7 @@ protected:
           }
         }
         m_doRefresh = 0;
-//        m_valMutex->unlock();
+        m_valMutex->unlock();
     }
 
     
@@ -399,7 +356,6 @@ public:
         m_audioInfo.reset(new AudioInfo(format));
         m_audioInfo->setDataMutex(m_canvas->dataMutex());
         connect(m_audioInfo.data(), &AudioInfo::update, [this]() {
-//            m_canvas->setLevel(m_audioInfo->level());
             m_canvas->setData(m_audioInfo->dataFrame(), m_audioInfo->dataLen());
         });
 
@@ -446,6 +402,7 @@ void Window::toggleMode()
         auto io = m_audioInput->start();
         connect(io, &QIODevice::readyRead,
             [&, io]() {
+                
                 qint64 len = m_audioInput->bytesReady();
                 const int BufferSize = 4096;
                 if (len > BufferSize)
