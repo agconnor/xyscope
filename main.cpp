@@ -235,11 +235,6 @@ public:
         QWidget *window = new QWidget;
         QVBoxLayout *layout = new QVBoxLayout;
 
-//        unsigned long sample_rate;
-//
-//
-//        sample_rate = 48000L;
-
         unsigned int refresh_rate = 25; // refresh/S
 
         m_canvas = new RenderArea(this);
