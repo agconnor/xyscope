@@ -17,9 +17,10 @@
 #include <qendian.h>
 
 #include <fftw3.h>
+#include <boost/multi_array.hpp>
 
 #define FRAME_SPAN 64
-#define FRAME_SIZE 4096
+#define FRAME_SIZE 8192
 
 class AudioInfo : public QIODevice
 {
@@ -99,14 +100,15 @@ class RenderArea : public QWidget
 
 public:
     explicit RenderArea(QWidget *parent) : QWidget(parent)
+//    val(*new boost::multi_array<quint16, 3>())
     {
         m_valMutex = new QMutex();
         m_dataMutex = new QMutex();
         in   = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
         m_data = new qint16[FRAME_SIZE];
+        m_val = new boost::multi_array<quint16, 3>(boost::extents[3][m_maxX][m_maxY]);
         setBackgroundRole(QPalette::Base);
         setAutoFillBackground(true);
-
         setMinimumHeight(600);
         setMinimumWidth(600);
     }
@@ -127,48 +129,73 @@ public:
         }
         m_dataMutex->unlock();
         
-        fftw_plan inPlan;
-        inPlan = fftw_plan_dft_2d(N/FRAME_SPAN, FRAME_SPAN,  in, in, FFTW_FORWARD, FFTW_ESTIMATE);
+        
+        inPlan = fftw_plan_dft_1d(N,  in, in, FFTW_FORWARD, FFTW_ESTIMATE);
 
         fftw_execute(inPlan);
+        
+        for(int32_t n = N/2; n < N ; n++) {
+            in[n][0] = 0.0;
+            in[n][1] = 0.0;
+        }
 
+        inPlan = fftw_plan_dft_1d(N,  in, in, FFTW_BACKWARD, FFTW_ESTIMATE);
+        
+        fftw_execute(inPlan);
+        
+        for(int32_t n = 0; n < N ; n++) {
+            in[n][0] /= (double) N/2;
+            in[n][1] /= (double) N/2;
+        }
+        
         int trigger_offset = 0;
         int x0 = 0, y0 = 0;
         //n_read = fread((char *) in_, sizeof(short), 2*framesize, stdin);
-        if(!m_valMutex->tryLock()) {
-            return;
-        }
-        m_doRefresh = 1;
-        for(int32_t n = 0; n < N ; n++) {
-            x0 = x;
-            y0 = y;
-            y = qFloor(in[n][0]*m_maxY + m_maxY/2);
-            x = qFloor(in[n][1]*m_maxX + m_maxX/2);
-            
-            if(x > m_maxX/2 && x0 <= m_maxX/2 && y > m_maxY/2 && qAbs(x-m_maxX/2) + qAbs(y-m_maxY/2) > 40) {
-                trigger_offset = n;
-                m_doRefresh = 1;
+        if(m_valMutex->tryLock()) {
+            if(m_val == NULL) {
+                m_valMutex->unlock();
+                return;
             }
-            
-            if(m_doRefresh && (
-                x >= 0 && x < m_maxX && y >= 0 && y < m_maxY)) {
-                int incr = 127 + qFloor(128 * (qreal) ((n - trigger_offset) % N) / (qreal) N);
-                val[0][x][y] = qMin(val[0][x][y] + incr, 255);
-                val[1][x][y] = 255;
-            }
-        }
-        fftw_destroy_plan(inPlan);
-        for(int r = 0; r < m_maxX; r++) {
-            for (int c = 0; c < m_maxX; c++) {
-                if(val[0][r][c] > 0) {
-                    val[0][r][c] = qMax(0, val[0][r][c] - 16);
+            boost::multi_array<quint16, 3> &val = *m_val;
+            m_doRefresh = 1;
+            for(int32_t n = 0; n < N ; n++) {
+                int maxSq = qMin(m_maxY, m_maxX);
+                x0 = x;
+                y0 = y;
+                y = qFloor(in[n][0]*maxSq + m_maxY/2);
+                x = qFloor(in[n][1]*maxSq + m_maxX/2);
+                
+                
+                if(x > m_maxX/2 && x0 <= m_maxX/2 &&
+                   qAbs(x-m_maxX/2) + qAbs(y-m_maxY/2) > maxSq/20) {
+                    trigger_offset = n;
+                    m_doRefresh = 1;
                 }
-                if(val[1][r][c] > 0) {
-                    val[1][r][c] *= .5;
+                
+                if(m_doRefresh && (
+                    x >= 0 && x < m_maxX && y >= 0 && y < m_maxY)) {
+                    int incr = 127 + qFloor(128 * (qreal) ((n - trigger_offset) % N) / (qreal) N);
+                    val[1][x][y] = qMin(val[1][x][y] + incr, 255);
+                    val[0][x][y] = 255;
+                    incr = qFloor(255 * (qreal) n / (qreal) N);
+                    val[2][x][y] = qMin(val[2][x][y] + incr, 255);
                 }
             }
+            for(boost::multi_array<quint16,3>::index r = 0; r < m_maxX; r++) {
+                for (boost::multi_array<quint16,3>::index c = 0; c < m_maxY; c++) {
+                    if(val[1][r][c] > 0) {
+                        val[1][r][c] = qMax(0, val[1][r][c] - 16);
+                    }
+                    if(val[2][r][c] > 0) {
+                        val[2][r][c] *= .75;
+                    }
+                    if(val[0][r][c] > 0) {
+                        val[0][r][c] *= .667;
+                    }
+                }
+            }
+            m_valMutex->unlock();
         }
-        m_valMutex->unlock();
     }
     
 
@@ -184,30 +211,47 @@ public:
         m_level = value;
         update();
     }
+    void doResize() {
+        m_valMutex->lock();
+        m_maxX = rect().width()/3;
+        m_maxY = rect().height()/3;
+        if(m_val != NULL)
+            delete m_val;
+        m_val = new boost::multi_array<quint16, 3>(boost::extents[3][m_maxX][m_maxY]);
+        m_valMutex->unlock();
+    }
 protected:
     void paintEvent(QPaintEvent *)
     {
         QPainter painter(this);
 
         painter.setPen(Qt::black);
-        painter.drawRect(QRect(painter.viewport().left()+10,
-                               painter.viewport().top()+10,
-                               painter.viewport().right()-20,
-                               painter.viewport().bottom()-20));
-        if(!m_valMutex->tryLock())
-            return;
-        painter.setPen(Qt::NoPen);
-        for(int r = 0; r < m_maxX; r++) {
-            for (int c = 0; c < m_maxY; c++) {
-              painter.setBrush(QColor(0, val[0][r][c], val[1][r][c]));
-              painter.drawRect(QRect(r*3, c*3, 3, 3));
-          }
+        painter.drawRect(QRect(painter.viewport().left(),
+                               painter.viewport().top(),
+                               painter.viewport().right(),
+                               painter.viewport().bottom()));
+        if(m_valMutex->tryLock() && m_val != NULL) {
+            if(m_val == NULL) {
+                m_valMutex->unlock();
+                return;
+            }
+            boost::multi_array<quint16, 3> &val = *m_val;
+            painter.setPen(Qt::NoPen);
+            for(boost::multi_array<quint16,3>::index r = 0; r < m_maxX; r++) {
+                for (boost::multi_array<quint16,3>::index c = 0; c < m_maxY; c++) {
+                  painter.setBrush(QColor(val[0][r][c], val[1][r][c], val[2][r][c]));
+                  painter.drawRect(QRect(r*3, c*3, 3, 3));
+              }
+            }
+            m_doRefresh = 0;
+            m_valMutex->unlock();
         }
-        m_doRefresh = 0;
-        m_valMutex->unlock();
     }
 
     
+    void resizeEvent(QResizeEvent *) {
+        doResize();
+    }
 private:
     qreal m_level = 0;
     qint16 * m_data;
@@ -219,8 +263,9 @@ private:
     int m_doRefresh = 0;
     int m_maxX = 200;
     int m_maxY = 200;
-    int val[2][200][200];
+    boost::multi_array<quint16, 3> * m_val = NULL;
     fftw_complex *in;
+    fftw_plan inPlan;
 };
 
 
@@ -238,6 +283,7 @@ public:
         unsigned int refresh_rate = 25; // refresh/S
 
         m_canvas = new RenderArea(this);
+        layout->setMargin(0);
         layout->addWidget(m_canvas);
 
         m_deviceBox = new QComboBox(this);
@@ -249,21 +295,21 @@ public:
         }
 
         connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &Window::deviceChanged);
-        layout->addWidget(m_deviceBox);
+        //layout->addWidget(m_deviceBox);
 
         m_volumeSlider = new QSlider(Qt::Horizontal, this);
         m_volumeSlider->setRange(0, 100);
         m_volumeSlider->setValue(100);
         connect(m_volumeSlider, &QSlider::valueChanged, this, &Window::sliderChanged);
-        layout->addWidget(m_volumeSlider);
+        //layout->addWidget(m_volumeSlider);
 
         m_modeButton = new QPushButton(this);
         connect(m_modeButton, &QPushButton::clicked, this, &Window::toggleMode);
-        layout->addWidget(m_modeButton);
+        //layout->addWidget(m_modeButton);
 
         m_suspendResumeButton = new QPushButton(this);
         connect(m_suspendResumeButton, &QPushButton::clicked, this, &Window::toggleSuspend);
-        layout->addWidget(m_suspendResumeButton);
+        //layout->addWidget(m_suspendResumeButton);
 
         window->setLayout(layout);
 
@@ -308,6 +354,13 @@ public:
         m_audioInfo->start();
         toggleMode();
     }
+    
+//    void resizeEvent(QResizeEvent *) {
+//        m_audioInput->suspend();
+//        m_canvas->doResize();
+//        m_audioInput->resume();
+//
+//    }
     
 
 private slots:
