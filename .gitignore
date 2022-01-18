@@ -9,3 +9,5 @@ main.moc
 moc_predefs.h
 *.app/
 *.o
+moc_hilbert_scatter_view.cpp
+moc_raster_view.cpp
