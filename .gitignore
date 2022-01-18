@@ -11,3 +11,4 @@ moc_predefs.h
 *.o
 moc_hilbert_scatter_view.cpp
 moc_raster_view.cpp
+moc_spectrum_view.cpp

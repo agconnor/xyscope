@@ -18,6 +18,7 @@
 
 #include "raster_view.hpp"
 #include "hilbert_scatter_view.hpp"
+#include "spectrum_view.hpp"
 
 
 
@@ -102,19 +103,23 @@ class Window : public QMainWindow
     Q_OBJECT
     
 public:
-    Window() : QMainWindow()
+    Window() : QMainWindow(),
+    timerConnection(*(new QMetaObject::Connection)),
+    audioUpdateConnection(*(new QMetaObject::Connection))
     {
         QWidget *window = new QWidget;
-        QVBoxLayout *layout = new QVBoxLayout;
-
+        m_layout = new QVBoxLayout;
+        m_timer = new QTimer();
+        
         unsigned int refresh_rate = 25; // refresh/S
 
-        m_canvas = new HilbertScatterView(this);
-        layout->setMargin(0);
-        layout->addWidget(m_canvas);
+        hilbert_canvas = new HilbertScatterView(this);
+        spectrum_canvas = new SpectrumView(this);
+        m_canvas = hilbert_canvas;
+        m_layout->setMargin(0);
+        m_layout->addWidget(m_canvas);
 
         sourcesMenu = menuBar()->addMenu(tr("&Source"));
-        QMenu srcsMenu(this);
         
         const QAudioDeviceInfo &defaultDeviceInfo = QAudioDeviceInfo::defaultInputDevice();
         for (auto &deviceInfo: QAudioDeviceInfo::availableDevices(QAudio::AudioInput)) {
@@ -125,7 +130,14 @@ public:
         
             sourcesMenu->addAction(srcAction);
         }
-
+        
+        viewsMenu = menuBar()->addMenu(tr("&View"));
+        hilbertScanAction = new QAction(tr("Analytic Signal Scan"), this);
+        connect(hilbertScanAction, SIGNAL(triggered(QAction*)), this, SLOT(viewChanged(QAction*)));
+        viewsMenu->addAction(hilbertScanAction);
+        spectrumAction = new QAction(tr("Spectrum"), this);
+        connect(spectrumAction, SIGNAL(triggered(QAction*)), this, SLOT(viewChanged(QAction*)));
+        viewsMenu->addAction(spectrumAction);
         //connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &Window::deviceChanged);
         //layout->addWidget(m_deviceBox);
 
@@ -143,17 +155,17 @@ public:
         connect(m_suspendResumeButton, &QPushButton::clicked, this, &Window::toggleSuspend);
         //layout->addWidget(m_suspendResumeButton);
 
-        window->setLayout(layout);
+        window->setLayout(m_layout);
 
         setCentralWidget(window);
         window->show();
         
 
-        QTimer *timer = new QTimer();
-        connect(timer, &QTimer::timeout, m_canvas,[this](){
+        
+        timerConnection = connect(m_timer, &QTimer::timeout, m_canvas,[this](){
             m_canvas->update();
         });
-        timer->start(1000/refresh_rate);
+        m_timer->start(1000/refresh_rate);
         initializeAudio(defaultDeviceInfo);
     }
     
@@ -174,7 +186,7 @@ public:
 
         m_audioInfo.reset(new AudioInfo(format));
         m_audioInfo->setDataMutex(m_canvas->dataMutex());
-        connect(m_audioInfo.data(), &AudioInfo::update, [this]() {
+        audioUpdateConnection = connect(m_audioInfo.data(), &AudioInfo::update, [this]() {
             m_canvas->setData(m_audioInfo->dataFrame(), m_audioInfo->dataLen());
         });
 
@@ -219,6 +231,7 @@ private slots:
     void toggleSuspend();
     void deviceChanged(const QAudioDeviceInfo & device);
     void sliderChanged(int value);
+    void viewChanged(const QAction * a);
 
 private:
     // Owned by layout
@@ -226,16 +239,52 @@ private:
     QPushButton *m_modeButton = nullptr;
     QPushButton *m_suspendResumeButton = nullptr;
     QSlider *m_volumeSlider = nullptr;
+    QVBoxLayout *m_layout = nullptr;
+    QTimer *m_timer = nullptr;
+    QMetaObject::Connection & timerConnection;
+    QMetaObject::Connection & audioUpdateConnection;
 
     QScopedPointer<AudioInfo> m_audioInfo;
     QScopedPointer<QAudioInput> m_audioInput;
     bool m_pullMode = true;
 
     QMenu * sourcesMenu;
-    QAction * volAction;
-    QAction * ppAction;
+    QMenu * viewsMenu;
+    QAction * hilbertScanAction;
+    QAction * spectrumAction;
+    
+    HilbertScatterView * hilbert_canvas;
+    SpectrumView * spectrum_canvas;
 };
 
+void Window::viewChanged(const QAction *a = NULL)
+{
+    RasterView * new_canvas = nullptr;
+    if(a != NULL) {
+        if(a==hilbertScanAction)
+            new_canvas = hilbert_canvas;
+        else if(a == spectrumAction)
+            new_canvas = spectrum_canvas;
+    }
+    
+    if(new_canvas != NULL && m_canvas != new_canvas) {
+        m_audioInput->suspend();
+        m_audioInfo->stop();
+        m_layout->replaceWidget(m_canvas, new_canvas);
+        disconnect(audioUpdateConnection);
+        disconnect(timerConnection);
+        m_canvas = new_canvas;
+        m_audioInfo->setDataMutex(m_canvas->dataMutex());
+        audioUpdateConnection = connect(m_audioInfo.data(), &AudioInfo::update, [this]() {
+            m_canvas->setData(m_audioInfo->dataFrame(), m_audioInfo->dataLen());
+        });
+        timerConnection = connect(m_timer, &QTimer::timeout, m_canvas,[this](){
+            m_canvas->update();
+        });
+        m_audioInfo->start();
+        m_audioInput->resume();
+    }
+}
 void Window::toggleMode()
 {
     m_audioInput->stop();
