@@ -4,7 +4,7 @@ QT += widgets multimedia
 CONFIG += debug
 SOURCES = main.cpp
 
-LIBS += -L/usr/local/lib -lfftw3 -lboost_container
+LIBS += -L/usr/local/lib -lfftw3_omp -lm -lfftw3 -lboost_container
 INCLUDEPATH += /usr/local/include
 
 # install

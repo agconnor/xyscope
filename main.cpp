@@ -107,6 +107,10 @@ public:
         in   = (fftw_complex *)fftw_malloc(sizeof(fftw_complex) * FRAME_SIZE);
         m_data = new qint16[FRAME_SIZE];
         m_val = new boost::multi_array<quint16, 3>(boost::extents[3][m_maxX][m_maxY]);
+        
+        fftw_init_threads();
+        fftw_plan_with_nthreads(4);
+        
         setBackgroundRole(QPalette::Base);
         setAutoFillBackground(true);
         setMinimumHeight(600);
@@ -144,9 +148,11 @@ public:
         fftw_execute(inPlan);
         
         for(int32_t n = 0; n < N ; n++) {
-            in[n][0] /= (double) N/2;
-            in[n][1] /= (double) N/2;
+            in[n][0] /= (double) N/2.0 / m_scale;
+            in[n][1] /= (double) N/2.0 / m_scale;
         }
+        
+        fftw_destroy_plan(inPlan);
         
         int trigger_offset = 0;
         int x0 = 0, y0 = 0;
@@ -184,13 +190,13 @@ public:
             for(boost::multi_array<quint16,3>::index r = 0; r < m_maxX; r++) {
                 for (boost::multi_array<quint16,3>::index c = 0; c < m_maxY; c++) {
                     if(val[1][r][c] > 0) {
-                        val[1][r][c] = qMax(0, val[1][r][c] - 16);
+                        val[1][r][c] = qMin(255, qMax(0, val[1][r][c] - m_greenDecay));
                     }
                     if(val[2][r][c] > 0) {
-                        val[2][r][c] *= .75;
+                        val[2][r][c] *= m_blueDecay;
                     }
                     if(val[0][r][c] > 0) {
-                        val[0][r][c] *= .667;
+                        val[0][r][c] *= m_redDecay;
                     }
                 }
             }
@@ -252,8 +258,46 @@ protected:
     void resizeEvent(QResizeEvent *) {
         doResize();
     }
+    
+    void wheelEvent(QWheelEvent *ev)
+    {
+        if((ev->angleDelta().x() != 0 || ev->angleDelta().y() != 0) && m_valMutex->tryLock()) {
+            
+            if(QApplication::queryKeyboardModifiers().testFlag(Qt::ShiftModifier)) {
+                if(ev->angleDelta().x() > 0)
+                    m_blueDecay += .01;
+                else if(ev->angleDelta().x() < 0)
+                    m_blueDecay -= .01;
+                m_blueDecay = qMax(0.001, qMin(1.0, m_blueDecay));
+                
+                if(ev->angleDelta().y() > 0)
+                    m_redDecay += .01;
+                else if(ev->angleDelta().y() < 0)
+                    m_redDecay -= .01;
+                m_redDecay = qMax(0.001, qMin(1.0, m_redDecay));
+            } else if(
+                      QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
+                if(ev->angleDelta().x() > 0)
+                    m_greenDecay += 4;
+                else if(ev->angleDelta().x() < 0)
+                    m_greenDecay -= 4;
+                m_greenDecay = qMax(1, qMin(128, m_greenDecay));
+            } else {
+                if(ev->angleDelta().y() > 0) // up Wheel
+                    m_scale *= 1.05;
+                else if(ev->angleDelta().y() < 0) //down Wheel
+                    m_scale /= 1.05;
+                m_scale = qMax(0.001, qMin(1024.0, m_scale));
+            }
+            m_valMutex->unlock();
+        }
+    }
 private:
     qreal m_level = 0;
+    qreal m_scale = 1.0;
+    qreal m_redDecay = .6667;
+    qreal m_blueDecay = .75;
+    int m_greenDecay = 16;
     qint16 * m_data;
     qint64 m_dataLen;
     QPixmap m_pixmap;
@@ -286,15 +330,21 @@ public:
         layout->setMargin(0);
         layout->addWidget(m_canvas);
 
-        m_deviceBox = new QComboBox(this);
+        sourcesMenu = menuBar()->addMenu(tr("&Source"));
+        QMenu srcsMenu(this);
+        
         const QAudioDeviceInfo &defaultDeviceInfo = QAudioDeviceInfo::defaultInputDevice();
-        m_deviceBox->addItem(defaultDeviceInfo.deviceName(), QVariant::fromValue(defaultDeviceInfo));
+        int i = 0;
         for (auto &deviceInfo: QAudioDeviceInfo::availableDevices(QAudio::AudioInput)) {
-            if (deviceInfo != defaultDeviceInfo)
-                m_deviceBox->addItem(deviceInfo.deviceName(), QVariant::fromValue(deviceInfo));
+            QAction * srcAction = new QAction(deviceInfo.deviceName(), this);
+            connect(srcAction, &QAction::triggered, this, [this, deviceInfo](){
+                deviceChanged(deviceInfo);
+            });
+        
+            sourcesMenu->addAction(srcAction);
         }
 
-        connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &Window::deviceChanged);
+        //connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &Window::deviceChanged);
         //layout->addWidget(m_deviceBox);
 
         m_volumeSlider = new QSlider(Qt::Horizontal, this);
@@ -362,11 +412,30 @@ public:
 //
 //    }
     
-
+    #ifndef QT_NO_CONTEXTMENU
+//    void contextMenuEvent(QContextMenuEvent *event)
+//    {
+//        QMenu menu(this);
+//        menu.addAction(srcAction);
+//        menu.addAction(ppAction);
+//        menu.addAction(volAction);
+//        menu.exec(event->globalPos());
+//    }
+    #endif // QT_NO_CONTEXTMENU
+    
+    void keyPressEvent(QKeyEvent * event) {
+        switch(event->key())
+        {
+            case Qt::Key_Space:
+                toggleSuspend();
+                break;
+        }
+    }
+    
 private slots:
     void toggleMode();
     void toggleSuspend();
-    void deviceChanged(int index);
+    void deviceChanged(const QAudioDeviceInfo & device);
     void sliderChanged(int value);
 
 private:
@@ -374,12 +443,15 @@ private:
     RenderArea *m_canvas = nullptr;
     QPushButton *m_modeButton = nullptr;
     QPushButton *m_suspendResumeButton = nullptr;
-    QComboBox *m_deviceBox = nullptr;
     QSlider *m_volumeSlider = nullptr;
 
     QScopedPointer<AudioInfo> m_audioInfo;
     QScopedPointer<QAudioInput> m_audioInput;
     bool m_pullMode = true;
+
+    QMenu * sourcesMenu;
+    QAction * volAction;
+    QAction * ppAction;
 };
 
 void Window::toggleMode()
@@ -426,13 +498,12 @@ void Window::toggleSuspend()
     }
 }
 
-void Window::deviceChanged(int index)
+void Window::deviceChanged(const QAudioDeviceInfo & device)
 {
     m_audioInfo->stop();
     m_audioInput->stop();
     m_audioInput->disconnect(this);
-
-    initializeAudio(m_deviceBox->itemData(index).value<QAudioDeviceInfo>());
+    initializeAudio(device);
 }
 
 void Window::sliderChanged(int value)
