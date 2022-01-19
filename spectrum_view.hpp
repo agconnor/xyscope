@@ -40,10 +40,13 @@ private:
     int m_doRefresh = 0;
     val_array_t * m_val = NULL;
     fftw_complex *in, *out;
-    fftw_complex *in_w = NULL;
+    fftw_complex *in_w = NULL, *in_r = NULL;
     fftw_plan inPlan;
     qint16 * m_data;
     
     qint64 m_dataLen;
+    quint32 m_X = 0;
+    quint32 m_Y = 0;
+    quint32 m_N = 0;
 };
 #endif /* spectrum_view_hpp */

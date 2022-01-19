@@ -115,7 +115,7 @@ public:
 
         hilbert_canvas = new HilbertScatterView(this);
         spectrum_canvas = new SpectrumView(this);
-        m_canvas = hilbert_canvas;
+        m_canvas = spectrum_canvas;
         m_layout->setMargin(0);
         m_layout->addWidget(m_canvas);
 
@@ -133,10 +133,10 @@ public:
         
         viewsMenu = menuBar()->addMenu(tr("&View"));
         hilbertScanAction = new QAction(tr("Analytic Signal Scan"), this);
-        connect(hilbertScanAction, SIGNAL(triggered(QAction*)), this, SLOT(viewChanged(QAction*)));
+        connect(hilbertScanAction, &QAction::triggered, this, &Window::viewChanged);
         viewsMenu->addAction(hilbertScanAction);
         spectrumAction = new QAction(tr("Spectrum"), this);
-        connect(spectrumAction, SIGNAL(triggered(QAction*)), this, SLOT(viewChanged(QAction*)));
+        connect(spectrumAction, &QAction::triggered, this, &Window::viewChanged);
         viewsMenu->addAction(spectrumAction);
         //connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &Window::deviceChanged);
         //layout->addWidget(m_deviceBox);
@@ -231,7 +231,7 @@ private slots:
     void toggleSuspend();
     void deviceChanged(const QAudioDeviceInfo & device);
     void sliderChanged(int value);
-    void viewChanged(const QAction * a);
+    void viewChanged(bool);
 
 private:
     // Owned by layout
@@ -257,31 +257,35 @@ private:
     SpectrumView * spectrum_canvas;
 };
 
-void Window::viewChanged(const QAction *a = NULL)
+void Window::viewChanged(bool)
 {
+    const QAction *la = NULL;
     RasterView * new_canvas = nullptr;
-    if(a != NULL) {
-        if(a==hilbertScanAction)
+    if(dynamic_cast<QAction *>(sender()) != NULL) {
+        la = dynamic_cast<QAction *>(sender());
+    }
+    if(la != NULL) {
+        if(la==hilbertScanAction)
             new_canvas = hilbert_canvas;
-        else if(a == spectrumAction)
+        else if(la == spectrumAction)
             new_canvas = spectrum_canvas;
     }
-    
+#pragma omp critical
     if(new_canvas != NULL && m_canvas != new_canvas) {
         m_audioInput->suspend();
-        m_audioInfo->stop();
-        m_layout->replaceWidget(m_canvas, new_canvas);
+        
         disconnect(audioUpdateConnection);
         disconnect(timerConnection);
+        
+        m_audioInfo->setDataMutex(new_canvas->dataMutex());
+        audioUpdateConnection = connect(m_audioInfo.data(), &AudioInfo::update, new_canvas, [new_canvas, this]() {
+            new_canvas->setData(m_audioInfo->dataFrame(), m_audioInfo->dataLen());
+        });
+        timerConnection = connect(m_timer, &QTimer::timeout, new_canvas,[new_canvas](){
+            new_canvas->update();
+        });
+        m_layout->replaceWidget(m_canvas, new_canvas);
         m_canvas = new_canvas;
-        m_audioInfo->setDataMutex(m_canvas->dataMutex());
-        audioUpdateConnection = connect(m_audioInfo.data(), &AudioInfo::update, [this]() {
-            m_canvas->setData(m_audioInfo->dataFrame(), m_audioInfo->dataLen());
-        });
-        timerConnection = connect(m_timer, &QTimer::timeout, m_canvas,[this](){
-            m_canvas->update();
-        });
-        m_audioInfo->start();
         m_audioInput->resume();
     }
 }
