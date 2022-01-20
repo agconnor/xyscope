@@ -25,6 +25,7 @@ protected:
     virtual qint64 & dataLen() override {return m_dataLen;}
     virtual val_array_t * & val() override {return m_val;}
     virtual void resizeEvent(QResizeEvent *) override;
+    virtual void paintEvent(QPaintEvent*) override;
     
 private:
     qreal m_level = 0;
@@ -33,14 +34,14 @@ private:
     qreal m_blueDecay = .75;
     int m_greenDecay = 16;
 
-    QPixmap m_pixmap;
+    QImage m_image;
     QMutex * m_valMutex;
     QMutex * m_dataMutex;
     
     int m_doRefresh = 0;
     val_array_t * m_val = NULL;
-    fftw_complex *in, *out;
-    fftw_complex *in_w = NULL, *in_r = NULL;
+    std::complex<double> *in, *out;
+    std::complex<double> *in_w = NULL, *in_r = NULL;
     fftw_plan inPlan;
     qint16 * m_data;
     

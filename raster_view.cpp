@@ -44,6 +44,7 @@ void RasterView::resizeEvent(QResizeEvent *) {
         boost::array<size_t, 3> new_ext = {3, maxX, maxY};
         val()->resize(new_ext);
     }
+    
     valMutex()->unlock();
 }
 

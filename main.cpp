@@ -86,10 +86,11 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
         memcpy(m_dataFrame, data, numSamples * m_format.channelCount() * channelBytes);
         m_dataLen = numSamples * m_format.channelCount();
         m_dataMutex->unlock();
+        emit update();
     }
 
     
-    emit update();
+    
     return len;
 }
 
@@ -115,7 +116,7 @@ public:
 
         hilbert_canvas = new HilbertScatterView(this);
         spectrum_canvas = new SpectrumView(this);
-        m_canvas = spectrum_canvas;
+        m_canvas = hilbert_canvas;
         m_layout->setMargin(0);
         m_layout->addWidget(m_canvas);
 
