@@ -271,7 +271,7 @@ void Window::viewChanged(bool)
         else if(la == spectrumAction)
             new_canvas = spectrum_canvas;
     }
-#pragma omp critical
+
     if(new_canvas != NULL && m_canvas != new_canvas) {
         m_audioInput->suspend();
         
