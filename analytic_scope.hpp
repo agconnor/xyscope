@@ -36,6 +36,8 @@ private:
     int m_doRefresh = 0;
     std::complex<double> *in;
     fftw_plan inPlan, outPlan;
+    
+    qreal trigger_level = 0.0;
 };
 
 #endif /* hilbert_scatter_view_hpp */

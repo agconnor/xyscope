@@ -58,7 +58,7 @@ void AnalyticScope::refreshImpl()
     fftw_execute(outPlan);
     
     for(int32_t n = 0; n < N ; n++) {
-        in[n] /= (double) N/2.0 / m_scale;
+        in[n] /= (double) N / m_scale;
     }
     
     fftw_destroy_plan(outPlan);
@@ -75,7 +75,6 @@ void AnalyticScope::refreshImpl()
     memset(val, 0, 3*m_maxX*m_maxY*sizeof(double));
     
     for(int32_t n = 1; n < N ; n++) {
-        qreal trigger_level = .1;
         if(trigger_offset < 0 && real(in[n]) >= trigger_level && real(in[n-1]) < trigger_level) {
             trigger_offset = n;
             trigger_z = conj(in[n]) / abs(in[n]);
@@ -131,6 +130,21 @@ void AnalyticScope::wheelEvent(QWheelEvent *ev)
     if((ev->angleDelta().x() != 0 || ev->angleDelta().y() != 0)) {
         
         if(QApplication::queryKeyboardModifiers().testFlag(Qt::ShiftModifier)) {
+            
+            if(ev->angleDelta().x() > 0)
+                m_greenDecay += 4;
+            else if(ev->angleDelta().x() < 0)
+                m_greenDecay -= 4;
+            m_greenDecay = qMax(1, qMin(128, m_greenDecay));
+            
+            if(ev->angleDelta().y() > 0) // up Wheel
+                m_scale *= 1.05;
+            else if(ev->angleDelta().y() < 0) //down Wheel
+                m_scale /= 1.05;
+            m_scale = qMax(0.001, m_scale);
+            QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1] [Green: %2]").arg( m_scale).arg(m_greenDecay));
+        } else if(
+                  QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
             if(ev->angleDelta().x() > 0)
                 m_blueDecay += .01;
             else if(ev->angleDelta().x() < 0)
@@ -142,19 +156,16 @@ void AnalyticScope::wheelEvent(QWheelEvent *ev)
             else if(ev->angleDelta().y() < 0)
                 m_redDecay -= .01;
             m_redDecay = qMax(0.001, qMin(1.0, m_redDecay));
-        } else if(
-                  QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
-            if(ev->angleDelta().x() > 0)
-                m_greenDecay += 4;
-            else if(ev->angleDelta().x() < 0)
-                m_greenDecay -= 4;
-            m_greenDecay = qMax(1, qMin(128, m_greenDecay));
+            
+            QApplication::activeWindow()->setWindowTitle(QString("[Red: %1] [Blue: %2]").arg( m_redDecay).arg(m_blueDecay));
         } else {
-            if(ev->angleDelta().y() > 0) // up Wheel
-                m_scale *= 1.05;
-            else if(ev->angleDelta().y() < 0) //down Wheel
-                m_scale /= 1.05;
-            m_scale = qMax(0.001, qMin(1024.0, m_scale));
+            if(ev->angleDelta().y() > 0.0)
+                trigger_level += .01;
+            else if(ev->angleDelta().y() < 0.0)
+                trigger_level -= .01;
+//            trigger_level = qBound(-1.0, trigger_level, 1.0);
+            QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1]").arg( trigger_level));
+            
         }
     }
 }
