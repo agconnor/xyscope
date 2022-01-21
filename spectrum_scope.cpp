@@ -72,8 +72,8 @@ void SpectrumScope::refreshImpl()
     }
     qint32 trigger_offset = -1;
     for(quint32 n = 1; n < m_X*m_K ; n++) {
-        if(trigger_offset < 0 && real(in_w[n]) >= trigger_level*_mag && real(in_w[n-1]) < trigger_level*_mag) {
-            trigger_offset = n-1;   
+        if(trigger_offset < 0 && real(in_w[n]) >= trigger_level * mag_ && real(in_w[n-1]) < trigger_level * mag_) {
+            trigger_offset = n-1;
             break;
         }
     }
@@ -93,7 +93,7 @@ void SpectrumScope::refreshImpl()
         memcpy(in, tmp,m_N*sizeof(std::complex<double>));
         in_r -= m_N;
         in_w -= m_N;
-        
+
     }
     
     fftw_execute(inPlan);
