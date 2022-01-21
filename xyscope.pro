@@ -4,10 +4,10 @@ QMAKE_LFLAGS +=  -lomp
 QT += widgets multimedia
 
 CONFIG += debug
-SOURCES = main.cpp raster_view.cpp hilbert_scatter_view.cpp spectrum_view.cpp
-HEADERS = raster_view.hpp hilbert_scatter_view.hpp spectrum_view.hpp
+SOURCES = main.cpp raster_view.cpp analytic_scope.cpp spectrum_scope.cpp
+HEADERS = raster_view.hpp raster_image.hpp spectrum_scope.hpp analytic_scope.hpp
 
-LIBS += -L/usr/local/lib -lfftw3_omp -lm -lfftw3 -lboost_container -lomp 
+LIBS += -L/usr/local/lib -lfftw3_omp -lm -lfftw3
 INCLUDEPATH += /usr/local/include
 
 # install

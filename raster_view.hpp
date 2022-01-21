@@ -13,13 +13,9 @@
 #include <QMutex>
 #include <QResizeEvent>
 #include <QPaintEvent>
-#include <boost/multi_array.hpp>
+#include <QImage>
 
-#define FRAME_SPAN 64
-#define FRAME_SIZE 8192
-
-typedef boost::multi_array<quint16, 3> val_array_t;
-typedef val_array_t::index val_idx_t;
+#include "raster_image.hpp"
 
 class RasterView : public QWidget
 {
@@ -27,24 +23,24 @@ class RasterView : public QWidget
 public:
     explicit RasterView(QWidget *parent) : QWidget(parent)
     {
-        
+        setBackgroundRole(QPalette::Base);
+        setPalette(QPalette(QPalette::Window, Qt::black));
+        setAutoFillBackground(true);
     }
-    
+    ~RasterView() {delete m_image;}
     void setData(qint16 * _data, qint64 len) {
-        memcpy(data(), _data, len*sizeof(qint16));
-        dataLen() = len;
-        refresh();
-        
+        RasterImage * rim = (RasterImage *)m_image;
+        rim->refresh(_data, len);
     }
-    virtual QMutex * & dataMutex() = 0;
-    virtual QMutex * & valMutex() = 0;
-    virtual void refresh() = 0;
+    QImage * & image() {return m_image;}
 protected:
-    virtual qint16 * & data() = 0;
-    virtual qint64 & dataLen() = 0;
-    virtual val_array_t * & val() = 0;
-    virtual void resizeEvent(QResizeEvent *);
-    virtual void paintEvent(QPaintEvent *);
+    virtual void resizeEvent(QResizeEvent *) override;
+    virtual void paintEvent(QPaintEvent *) override;
+    virtual void wheelEvent(QWheelEvent *ev) override {
+        ((RasterImage *)m_image)->wheelEvent(ev);
+    }
+private:
+    QImage * m_image;
 };
 
 
