@@ -34,15 +34,17 @@ public:
     }
     qint16 * & data()  {return m_data;}
     quint32 & len()    {return m_len;}
-    void start() { //m_mutex->lock();
-        m_running = 1;
-        //m_mutex->unlock();
+    void start() {
+        if(m_mutex->tryLock()) {
+            m_running = 1;
+            m_mutex->unlock();
+        }
         
     }
     void stop()  {
-        //m_mutex->lock();
+        m_mutex->lock();
         m_running = 0;
-        //m_mutex->unlock();
+        m_mutex->unlock();
         
     }
     void refresh(qint16 * _data, quint32 len) {
@@ -55,6 +57,8 @@ public:
             }
         }
     }
+    
+    bool running() {return m_running;}
     
     virtual void wheelEvent(QWheelEvent *ev) {}
     virtual void resizeEvent(QResizeEvent *) {}

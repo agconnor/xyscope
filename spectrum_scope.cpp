@@ -133,12 +133,12 @@ void SpectrumScope::resizeEvent(QResizeEvent *) {
     m_N = m_X * m_Y;
     delete[] in;
     in = new std::complex<double>[m_N*2];
-    m_K = qBound(0U, m_K, m_N-1);
+    m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
     in_r = in;
     in_w = in+m_N;
     delete[] out;
     out = new std::complex<double>[m_N];
-    QApplication::activeWindow()->setWindowTitle(QString("[∆ƒ (H): %1 KHz] [∆T (V): %2 ms]").arg( m_X*12.0 / 1000.0).arg(m_Y*FRAME_SIZE/48.0));
+    QApplication::activeWindow()->setWindowTitle(QString("[∆ƒ (H): %1 KHz] [∆T (V): %2 ms]").arg( m_X*12.0 / 1000.0).arg((double)m_Y*(double)FRAME_SIZE/48.0/(double)m_K));
 }
 
 void SpectrumScope::wheelEvent(QWheelEvent *ev)
@@ -154,12 +154,19 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         else if(ev->angleDelta().x() < 0.0)
             sat = qBound(0.01, sat-.01, 1.0);
         QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1] [Sat.: %2]").arg( scale).arg(sat));
+    } else if(QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
+        if(ev->angleDelta().y() > 0.0)
+            m_K += 1;
+        else if(ev->angleDelta().y() < 0.0)
+            m_K -= 1;
+        m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
+        QApplication::activeWindow()->setWindowTitle(QString("[∆ƒ (H): %1 KHz] [∆T (V): %2 ms]").arg( m_X*12.0 / 1000.0).arg((double)m_Y*(double)FRAME_SIZE/48.0/(double)m_K));
     } else {
         if(ev->angleDelta().y() > 0.0)
-            trigger_level += .5;
+            trigger_level += .01;
         else if(ev->angleDelta().y() < 0.0)
-            trigger_level -= .5;
+            trigger_level -= .01;
         trigger_level = qBound(-1.0, trigger_level, 1.0);
-        QApplication::activeWindow()->setWindowTitle(QString("Trigger level: %1%%").arg( trigger_level*100.0));
+        QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1%]").arg( trigger_level*100.0));
     }
 }

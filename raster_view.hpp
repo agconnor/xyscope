@@ -37,7 +37,12 @@ protected:
     virtual void resizeEvent(QResizeEvent *) override;
     virtual void paintEvent(QPaintEvent *) override;
     virtual void wheelEvent(QWheelEvent *ev) override {
-        ((RasterImage *)m_image)->wheelEvent(ev);
+        RasterImage * rim = (RasterImage *)m_image;
+        if(rim->running()) {
+            rim->stop();
+            rim->wheelEvent(ev);
+            rim->start();
+        }
     }
 private:
     QImage * m_image;
