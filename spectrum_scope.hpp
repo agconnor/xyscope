@@ -35,6 +35,7 @@ private:
     quint32 m_K = 1;
     
     qreal scale = 1.0;
-    qreal sat = 0.05;
+    qreal sat = 0.02;
+    qreal trigger_level = 0.0;
 };
 #endif /* spectrum_view_hpp */
