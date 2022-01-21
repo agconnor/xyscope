@@ -19,6 +19,7 @@ public:
     ~SpectrumScope();
     
     void resizeEvent(QResizeEvent *) override;
+    void wheelEvent(QWheelEvent *ev) override;
 protected:
     void refreshImpl() override;
 private:
@@ -31,5 +32,9 @@ private:
     quint32 m_X = 0;
     quint32 m_Y = 0;
     quint32 m_N = 0;
+    quint32 m_K = 1;
+    
+    qreal scale = 1.0;
+    qreal sat = 0.05;
 };
 #endif /* spectrum_view_hpp */

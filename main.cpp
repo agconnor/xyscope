@@ -222,7 +222,21 @@ void Window::initializeAudio(const QAudioDeviceInfo &deviceInfo)
 
     m_audioInput.reset(new QAudioInput(deviceInfo, format));
     m_audioInfo->start();
-    toggleMode();
+    auto io = m_audioInput->start();
+    connect(io, &QIODevice::readyRead,
+        [&, io]() {
+            
+            qint64 len = m_audioInput->bytesReady();
+            const int BufferSize = FRAME_SIZE;
+            if (len > BufferSize)
+                len = BufferSize;
+
+            QByteArray buffer(len, 0);
+            qint64 l = io->read(buffer.data(), len);
+            if (l > 0)
+                m_audioInfo->write(buffer.constData(), l);
+        });
+//    toggleMode();
 }
 void Window::viewChanged(bool)
 {
@@ -244,30 +258,30 @@ void Window::viewChanged(bool)
 }
 void Window::toggleMode()
 {
-    m_audioInput->stop();
-    toggleSuspend();
-
-    // Change bewteen pull and push modes
-    if (m_pullMode) {
-        m_audioInput->start(m_audioInfo.data());
-    } else {
-        auto io = m_audioInput->start();
-        connect(io, &QIODevice::readyRead,
-            [&, io]() {
-                
-                qint64 len = m_audioInput->bytesReady();
-                const int BufferSize = FRAME_SIZE;
-                if (len > BufferSize)
-                    len = BufferSize;
-
-                QByteArray buffer(len, 0);
-                qint64 l = io->read(buffer.data(), len);
-                if (l > 0)
-                    m_audioInfo->write(buffer.constData(), l);
-            });
-    }
-
-    m_pullMode = !m_pullMode;
+//    m_audioInput->stop();
+//    toggleSuspend();
+//
+//    // Change bewteen pull and push modes
+//    if (m_pullMode) {
+//        m_audioInput->start(m_audioInfo.data());
+//    } else {
+//        auto io = m_audioInput->start();
+//        connect(io, &QIODevice::readyRead,
+//            [&, io]() {
+//
+//                qint64 len = m_audioInput->bytesReady();
+//                const int BufferSize = FRAME_SIZE;
+//                if (len > BufferSize)
+//                    len = BufferSize;
+//
+//                QByteArray buffer(len, 0);
+//                qint64 l = io->read(buffer.data(), len);
+//                if (l > 0)
+//                    m_audioInfo->write(buffer.constData(), l);
+//            });
+//    }
+//
+//    m_pullMode = !m_pullMode;
 }
 
 void Window::toggleSuspend()
@@ -286,10 +300,12 @@ void Window::toggleSuspend()
 
 void Window::deviceChanged(const QAudioDeviceInfo & device)
 {
+    active_scope->stop();
     m_audioInfo->stop();
     m_audioInput->stop();
     m_audioInput->disconnect(this);
     initializeAudio(device);
+    active_scope->start();
 }
 
 void Window::sliderChanged(int value)
