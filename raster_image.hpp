@@ -16,12 +16,14 @@
 
 #define FRAME_SPAN 64
 #define FRAME_SIZE 4096
+#define PIXEL_SCALE 2
+#define INIT_SIZE 600
 
 class RasterImage : public QImage {
     
 public:
-    explicit RasterImage(QWidget * parent) : QImage(200,  //parent->rect().width(),
-               200, //parent->rect().height(),
+    explicit RasterImage(QWidget * parent) : QImage(INIT_SIZE/PIXEL_SCALE,  //parent->rect().width(),
+               INIT_SIZE/PIXEL_SCALE, //parent->rect().height(),
                QImage::Format_RGB888){
         m_mutex = new QMutex();
         m_len = FRAME_SIZE;
