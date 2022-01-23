@@ -37,7 +37,7 @@ private:
     qreal scale = 1.0;
     qreal sat = 0.5;
     qreal trigger_level = 0.1;
-    quint32 m_scanLines = INIT_SIZE/PIXEL_SCALE;
+    quint32 m_scanLines = INIT_SIZE/PIXEL_SCALE/4;
     quint32 m_decimFactorH = 4;
     
     void fft_dyn_alloc();

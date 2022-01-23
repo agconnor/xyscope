@@ -52,7 +52,7 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
      fft_decim_set();
 
      
-     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH*2,
+     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH,
                                   reinterpret_cast<fftw_complex*>(decim+m_X/2 - m_X/2/m_decimFactorH),
                                   reinterpret_cast<fftw_complex*>(in_w),
                                           FFTW_BACKWARD, FFTW_MEASURE);
@@ -83,30 +83,37 @@ void SpectrumScope::refreshImpl()
     }
     
     fftw_execute(prePlan);
-    for(quint32 n = 0; n < m_X/m_decimFactorH; n++) {
-        decim[n] = decim[n*2];
-        decim[m_X/m_decimFactorH*2-n-1] = decim[FRAME_SIZE-(n*2+1)];
+    for(quint32 n = 0; n < m_X/m_decimFactorH*FRAME_SIZE/M/2; n++) {
+        decim[n] = decim[n*(FRAME_SIZE/M)];
+        decim[m_X/m_decimFactorH*(FRAME_SIZE/M)-n-1] = decim[FRAME_SIZE-(n*(FRAME_SIZE/M)+1)];
     }
-//    memset(decim + m_X/m_decimFactorH, 0, (m_X - m_X/m_decimFactorH)*sizeof(std::complex<double>));
-    memset(decim + m_X/m_decimFactorH*2, 0, (FRAME_SIZE-m_X/m_decimFactorH*2)*sizeof(std::complex<double>));
+
+    quint32 x_offset = m_X/2 - m_X/2/m_decimFactorH;
+    memset(decim + m_X/m_decimFactorH*(FRAME_SIZE/M), 0,
+           (FRAME_SIZE-m_X/m_decimFactorH*(FRAME_SIZE/M))*sizeof(std::complex<double>));
+    
     
     fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
-                     reinterpret_cast<fftw_complex*>(in_w+m_X/2 - m_X/2/m_decimFactorH));
+                     reinterpret_cast<fftw_complex*>(in_w+x_offset));
 
     for(quint32 n = 0; n < m_X ; n++) {
         in_w[n] /= (double) (m_X/m_decimFactorH);
     }
     
     qint32 trigger_offset = -1;
-    for(quint32 n = m_X/2 - m_X/2/m_decimFactorH; n < m_X/2 + m_X/2/m_decimFactorH ; n++) {
+    for(quint32 n = x_offset; n < m_X-x_offset+1 ; n++) {
         if(trigger_offset < 0 && abs(in_w[n]) >= trigger_level && arg(in_w[n]) >= 0.0) {
-            trigger_offset = n;
+            trigger_offset = n-x_offset;
             break;
         }
     }
+    
     if(trigger_offset >= 0 && trigger_offset < (int)m_X-1) {
-        memcpy(in_w, in_w + trigger_offset, (m_X - trigger_offset)*sizeof(std::complex<double>));
-        memset(in_w+(m_X - trigger_offset), 0, trigger_offset*sizeof(std::complex<double>));
+        memcpy(in_w + x_offset,
+               in_w + x_offset + trigger_offset,
+               (m_X - trigger_offset)
+                    *sizeof(std::complex<double>));
+        memset(in_w+m_X - trigger_offset, 0, trigger_offset*sizeof(std::complex<double>));
     } else if(trigger_offset < 0) {
         memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
