@@ -152,15 +152,16 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
 {
     if(QApplication::queryKeyboardModifiers().testFlag(Qt::ShiftModifier)) {
         if(ev->angleDelta().y() > 0.0)
-            scale = qBound(0.01, scale*1.05, 100.0);
+            scale *= 1.05;
         else if(ev->angleDelta().y() < 0.0)
-            scale = qBound(0.01, scale/1.05, 100.0);
+            scale /= 1.05;
+        scale = qBound(1e-10, scale, 1e10);
         
         if(ev->angleDelta().x() > 0.0)
             sat = qBound(0.01, sat+.01, 1.0);
         else if(ev->angleDelta().x() < 0.0)
             sat = qBound(0.01, sat-.01, 1.0);
-        QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1] [Sat.: %2]").arg( scale).arg(sat));
+        QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1 dB] [Sat.: %2]").arg( log(scale)*10).arg(sat));
     } else if(QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
         if(ev->angleDelta().y() > 0.0)
             m_decimFactorV += 1;
