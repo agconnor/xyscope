@@ -39,7 +39,7 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
      in_w = in + (m_Y/2 - m_Y/2/m_decimFactorV)*m_X;
      if(m_decimFactorV > 1)
          memset(in_w
-                + m_N - m_Y/m_decimFactorV/4*m_X, 0,
+                + (m_Y/2 + m_Y/2/m_decimFactorV)*m_X, 0,
          m_N/m_decimFactorV
                 *sizeof(std::complex<double>));
  }
@@ -113,7 +113,7 @@ void SpectrumScope::refreshImpl()
         memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
     in_r = in; //(((in_r - in) + m_L) % (m_N*2));
-    in_w = in_r + (((in_w - in_r) + m_X) % m_N);
+    in_w = in_r + (((in_w - in_r) + m_X) % (m_N/m_decimFactorV));
 
     fftw_execute(inPlan);
     
