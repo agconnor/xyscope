@@ -57,7 +57,7 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
                                   reinterpret_cast<fftw_complex*>(in_w),
                                           FFTW_BACKWARD, FFTW_MEASURE);
      inPlan = fftw_plan_dft_2d(m_X, m_Y,
-                 reinterpret_cast<fftw_complex*>(in),
+                 reinterpret_cast<fftw_complex*>(out),
                  reinterpret_cast<fftw_complex*>(out),
                      FFTW_FORWARD, FFTW_MEASURE);
   }
@@ -121,8 +121,14 @@ void SpectrumScope::refreshImpl()
     in_w = in_r + (m_Y/2-m_scanLines/2)*m_X
                 + (((in_w - (in_r + (m_Y/2-m_scanLines/2)*m_X)) + m_X) % (m_scanLines*m_X));
 
-    //fftw_execute(inPlan);
-    memcpy(out, in, m_N*sizeof(std::complex<double>));
+    for(quint32 y = 0; y < m_Y; y++) {
+        for(quint32 x = 0; x < m_X; x++) {
+            quint32 x_ = (x+m_X/2) % m_X;
+            quint32 y_ = (y+m_Y/2) % m_Y;
+            out[y*m_X+x] = in[y_*m_X+x_];
+        }
+    }
+    fftw_execute(inPlan);
     
     for(quint32 n = 0; n < m_N ; n++) {
 //        out[n] /= (double) N  ;
@@ -140,7 +146,7 @@ void SpectrumScope::refreshImpl()
                                  qMax((mag-1.0)*sat,0.0),
                                  1.0),
                           qMin(1.0, mag));
-            setPixelColor(x, y, color);
+            setPixelColor(x_, y_, color);
         }
     }
 }
@@ -181,9 +187,9 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         setBandwidthTitle();
     } else {
         if(ev->angleDelta().y() > 0.0)
-            trigger_level *= 1.01;
+            trigger_level *= 1.05;
         else if(ev->angleDelta().y() < 0.0)
-            trigger_level /= 1.01;
+            trigger_level /= 1.05;
         trigger_level = qBound(1e-10, trigger_level, 1e10);
         QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1 dB]").arg( log(trigger_level)*10.0));
     }
