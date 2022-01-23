@@ -20,19 +20,52 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
     m_Y = height();
     m_N = m_X * m_Y;
     
-    in   = new std::complex<double>[m_N*2];
-    out   = new std::complex<double>[m_N];
-    in_w = in + m_N;
     in_r = in;
+    in_w = in;
+    
+    fft_dyn_alloc();
     
     fftw_init_threads();
     fftw_plan_with_nthreads(2);
 }
 
+
+ void SpectrumScope::fft_decim_set() {
+     in_w = in + (m_Y/2 - m_Y/2/m_decimFactorV)*m_X;
+     if(m_decimFactorV > 1)
+         memset(in_w
+                + m_N - m_Y/m_decimFactorV/4*m_X, 0,
+         m_Y/m_decimFactorV/4*m_X
+                *sizeof(std::complex<double>));
+ }
+ 
+ void SpectrumScope::fft_dyn_alloc() {
+     if(in != NULL)
+         fftw_free(in);
+     in   = (std::complex<double> *) fftw_alloc_complex(m_N*2);
+
+     if(out != NULL)
+         fftw_free(out);
+     out   = (std::complex<double> *) fftw_alloc_complex(m_N);
+     fft_decim_set();
+     decimPlan = fftw_plan_dft_1d(m_X,
+                                  reinterpret_cast<fftw_complex*>(decim),
+                                  reinterpret_cast<fftw_complex*>(in_w),
+                                          FFTW_BACKWARD, FFTW_MEASURE);
+     inPlan = fftw_plan_dft_2d(m_X, m_Y,
+                 reinterpret_cast<fftw_complex*>(in),
+                 reinterpret_cast<fftw_complex*>(out),
+                     FFTW_FORWARD, FFTW_MEASURE);
+  }
+ 
+
 SpectrumScope::~SpectrumScope()
 {
-    delete [] in;
-    delete [] out;
+    fftw_destroy_plan(prePlan);
+    fftw_destroy_plan(decimPlan);
+    fftw_destroy_plan(inPlan);
+    fftw_free((fftw_complex*)in);
+    fftw_free((fftw_complex*)out);
 }
 
 void SpectrumScope::refreshImpl()
@@ -43,25 +76,20 @@ void SpectrumScope::refreshImpl()
     int m_maxX = m_X;
     int m_maxY = m_Y;
     double pre[M];
-    std::complex<double> in_[M];
     for(int32_t n = 0; n < M ; n++) {
         pre[n] = (double) data()[n] / 32768.0;
     }
-    inPlan = fftw_plan_dft_r2c_1d(M,  pre,
-                                  reinterpret_cast<fftw_complex*>(in_), FFTW_ESTIMATE);
     
-    fftw_execute(inPlan);
-    fftw_destroy_plan(inPlan);
+    fftw_execute(prePlan);
 
     std::complex<double> decim[m_X];
     
     for(quint32 n = 0; n < m_X/4; n++) {
-        decim[n] = in_[n];// * (double)M/(double) (m_X*m_K);
-        decim[m_X/2-n-1] = in_[m_X/2-n-1];// * (double)M/(double) (m_X*m_K);
+        decim[m_X/2-n-1] = decim[FRAME_SIZE/2-n-1];
     }
     
-    inPlan = fftw_plan_dft_1d(m_X, reinterpret_cast<fftw_complex*>(decim),
-                              reinterpret_cast<fftw_complex*>(in_w), FFTW_BACKWARD, FFTW_ESTIMATE);
+    fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
+                     reinterpret_cast<fftw_complex*>(in_w));
 
     for(quint32 n = 0; n < m_X ; n++) {
         in_w[n] /= (double) (m_X);
@@ -97,15 +125,10 @@ void SpectrumScope::refreshImpl()
     }
     
     fftw_execute(inPlan);
-    fftw_destroy_plan(inPlan);
-    
-    inPlan = fftw_plan_dft_2d(m_X, m_Y,  reinterpret_cast<fftw_complex*>(in_r), reinterpret_cast<fftw_complex*>(out), FFTW_FORWARD, FFTW_ESTIMATE);
-    
-    fftw_execute(inPlan);
-    fftw_destroy_plan(inPlan);
     
     for(quint32 n = 0; n < N ; n++) {
-        out[n] /= (double) (N * scale)  ;
+        out[n] /= (double) N  ;
+        out[n] *= scale;
     }
     
     for(int x = 0; x < m_maxX ; x++) {
@@ -131,13 +154,7 @@ void SpectrumScope::postResize(){
     m_X = maxX;
     m_Y = maxY;
     m_N = m_X * m_Y;
-    delete[] in;
-    in = new std::complex<double>[m_N*2];
-//    m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
-    in_r = in;
-    in_w = in+m_N;
-    delete[] out;
-    out = new std::complex<double>[m_N];
+    fft_dyn_alloc();
     setBandwidthTitle();
 }
 
