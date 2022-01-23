@@ -1,6 +1,4 @@
 QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.15
-QMAKE_CXXFLAGS += -Xpreprocessor -fopenmp -lomp -I/usr/local/include
-QMAKE_LFLAGS +=  -lomp
 QT += widgets multimedia
 
 CONFIG += debug
