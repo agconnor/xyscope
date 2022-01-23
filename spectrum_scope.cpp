@@ -23,6 +23,11 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
     in_r = in;
     in_w = in;
     
+    pre = (double *) fftw_alloc_real(FRAME_SIZE);
+    decim = (std::complex<double> *) fftw_alloc_complex(FRAME_SIZE);
+    
+    prePlan = fftw_plan_dft_r2c_1d(FRAME_SIZE, pre,
+                                   reinterpret_cast<fftw_complex *>(decim), FFTW_MEASURE);
     fft_dyn_alloc();
     
     fftw_init_threads();
@@ -35,7 +40,7 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
      if(m_decimFactorV > 1)
          memset(in_w
                 + m_N - m_Y/m_decimFactorV/4*m_X, 0,
-         m_Y/m_decimFactorV/4*m_X
+         m_N/m_decimFactorV
                 *sizeof(std::complex<double>));
  }
  
@@ -75,14 +80,11 @@ void SpectrumScope::refreshImpl()
     
     int m_maxX = m_X;
     int m_maxY = m_Y;
-    double pre[M];
     for(int32_t n = 0; n < M ; n++) {
         pre[n] = (double) data()[n] / 32768.0;
     }
     
     fftw_execute(prePlan);
-
-    std::complex<double> decim[m_X];
     
     for(quint32 n = 0; n < m_X/4; n++) {
         decim[m_X/2-n-1] = decim[FRAME_SIZE/2-n-1];
@@ -113,17 +115,7 @@ void SpectrumScope::refreshImpl()
     }
     in_r = in; //(((in_r - in) + m_L) % (m_N*2));
     in_w = in_r + (((in_w - in_r) + m_X) % m_N);
-//    in_w = in + (((in_w - in) + m_X) % m_N);
-    if(in_r - in > m_N) {
-        std::complex<double> tmp[m_N];
-        memcpy(tmp, in + m_N, m_N*sizeof(std::complex<double>));
-        memcpy(in + m_N, in,m_N*sizeof(std::complex<double>));
-        memcpy(in, tmp,m_N*sizeof(std::complex<double>));
-        in_r -= m_N;
-        in_w -= m_N;
 
-    }
-    
     fftw_execute(inPlan);
     
     for(quint32 n = 0; n < N ; n++) {
@@ -148,11 +140,9 @@ void SpectrumScope::refreshImpl()
 }
 
 
-void SpectrumScope::postResize(){
-    size_t maxX = rect().width();
-    size_t maxY = rect().height();
-    m_X = maxX;
-    m_Y = maxY;
+void SpectrumScope::postResize() {
+    m_X = rect().width();
+    m_Y = rect().height();
     m_N = m_X * m_Y;
     fft_dyn_alloc();
     setBandwidthTitle();
