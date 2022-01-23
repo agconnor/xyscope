@@ -23,20 +23,21 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
     in_r = in;
     in_w = in;
     
-    pre = (double *) fftw_alloc_real(FRAME_SIZE);
+    pre   = (std::complex<double> *) fftw_alloc_complex(FRAME_SIZE);
     decim = (std::complex<double> *) fftw_alloc_complex(FRAME_SIZE);
     
-    prePlan = fftw_plan_dft_r2c_1d(FRAME_SIZE, pre,
-                                   reinterpret_cast<fftw_complex *>(decim), FFTW_MEASURE);
+    prePlan = fftw_plan_dft_1d(FRAME_SIZE,
+                               reinterpret_cast<fftw_complex *>(pre),
+                               reinterpret_cast<fftw_complex *>(decim),
+                               FFTW_FORWARD, FFTW_MEASURE);
     fft_dyn_alloc();
-    
     fftw_init_threads();
     fftw_plan_with_nthreads(2);
 }
 
 
  void SpectrumScope::fft_decim_set() {
-     in_w = in + (m_Y/2-m_Y/2/m_decimFactorV)*m_X;
+     in_w = in + (m_Y/2-m_scanLines/2)*m_X;
      memset(in, 0, m_N*sizeof(std::complex<double>));
  }
  
@@ -49,7 +50,9 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
          fftw_free(out);
      out   = (std::complex<double> *) fftw_alloc_complex(m_N);
      fft_decim_set();
-     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH,
+
+     
+     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH*2,
                                   reinterpret_cast<fftw_complex*>(decim+m_X/2 - m_X/2/m_decimFactorH),
                                   reinterpret_cast<fftw_complex*>(in_w),
                                           FFTW_BACKWARD, FFTW_MEASURE);
@@ -74,13 +77,18 @@ void SpectrumScope::refreshImpl()
 {
     int M = qMin((quint32) FRAME_SIZE, len());
 
-    for(int32_t n = 0; n < M ; n++) {
+    for(int32_t n = 0; n < M/2 ; n++) {
         pre[n] = (double) data()[n] / 32768.0;
+        pre[FRAME_SIZE-n-1] = (double) data()[M-n-1] / 32768.0;
     }
     
     fftw_execute(prePlan);
-    
+    for(quint32 n = 0; n < m_X/m_decimFactorH; n++) {
+        decim[n] = decim[n*2];
+        decim[m_X/m_decimFactorH*2-n-1] = decim[FRAME_SIZE-(n*2+1)];
+    }
 //    memset(decim + m_X/m_decimFactorH, 0, (m_X - m_X/m_decimFactorH)*sizeof(std::complex<double>));
+    memset(decim + m_X/m_decimFactorH*2, 0, (FRAME_SIZE-m_X/m_decimFactorH*2)*sizeof(std::complex<double>));
     
     fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
                      reinterpret_cast<fftw_complex*>(in_w+m_X/2 - m_X/2/m_decimFactorH));
@@ -103,8 +111,8 @@ void SpectrumScope::refreshImpl()
         memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
     in_r = in; //(((in_r - in) + m_L) % (m_N*2));
-    in_w = in_r + (m_Y/2-m_Y/2/m_decimFactorV)*m_X
-                + (((in_w - (in_r + (m_Y/2-m_Y/2/m_decimFactorV)*m_X)) + m_X) % (m_N/m_decimFactorV));
+    in_w = in_r + (m_Y/2-m_scanLines/2)*m_X
+                + (((in_w - (in_r + (m_Y/2-m_scanLines/2)*m_X)) + m_X) % (m_scanLines*m_X));
 
     //fftw_execute(inPlan);
     memcpy(out, in, m_N*sizeof(std::complex<double>));
@@ -132,9 +140,12 @@ void SpectrumScope::refreshImpl()
 
 
 void SpectrumScope::postResize() {
+    if(m_scanLines == m_Y)
+        m_scanLines = rect().height();
     m_X = rect().width();
     m_Y = rect().height();
     m_N = m_X * m_Y;
+    m_scanLines = qMin(m_scanLines, m_Y);
     fft_dyn_alloc();
     setBandwidthTitle();
 }
@@ -155,10 +166,10 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1 dB] [Sat.: %2]").arg( log(scale)*10).arg(sat));
     } else if(QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
         if(ev->angleDelta().y() > 0.0)
-            m_decimFactorV += 1;
+            m_scanLines += 1;
         else if(ev->angleDelta().y() < 0.0)
-            m_decimFactorV -= 1;
-        m_decimFactorV = qBound(1U, m_decimFactorV, m_Y);
+            m_scanLines -= 1;
+        m_scanLines = qBound(1U, m_scanLines, m_Y);
         fft_decim_set();
         setBandwidthTitle();
     } else {

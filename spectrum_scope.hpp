@@ -25,9 +25,8 @@ protected:
     
 private:
     
-    std::complex<double> *decim = NULL, *in = NULL, *out = NULL;
+    std::complex<double> *pre = NULL, *decim = NULL, *in = NULL, *out = NULL;
     std::complex<double> *in_w = NULL, *in_r = NULL;
-    double *pre;
     
     fftw_plan prePlan, decimPlan, inPlan;
     
@@ -37,9 +36,9 @@ private:
     
     qreal scale = 1.0;
     qreal sat = 0.5;
-    qreal trigger_level = 0.01;
-    quint32 m_decimFactorV = 4;
-    quint32 m_decimFactorH = 1;
+    qreal trigger_level = 0.1;
+    quint32 m_scanLines = INIT_SIZE/PIXEL_SCALE;
+    quint32 m_decimFactorH = 4;
     
     void fft_dyn_alloc();
     void fft_decim_set();
@@ -52,8 +51,9 @@ private:
                 ((double)SAMPLE_RATE/
                         (double)FRAME_SIZE/
                         (double) m_decimFactorH)),
-              (int) ((double) m_Y *
-                (double)FRAME_SIZE/48.0/(double)m_decimFactorV)));
+              (int) ((double) m_scanLines *
+                (double)FRAME_SIZE
+                     /((double)SAMPLE_RATE / 1000.0))));
     }
 };
 #endif /* spectrum_view_hpp */
