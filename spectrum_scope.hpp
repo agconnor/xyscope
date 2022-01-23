@@ -37,9 +37,9 @@ private:
     
     qreal scale = 1.0;
     qreal sat = 0.5;
-    qreal trigger_level = 0.2;
+    qreal trigger_level = 0.01;
     quint32 m_decimFactorV = 4;
-    quint32 m_decimFactorH = 2;
+    quint32 m_decimFactorH = 1;
     
     void fft_dyn_alloc();
     void fft_decim_set();

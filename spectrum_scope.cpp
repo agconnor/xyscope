@@ -36,12 +36,8 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
 
 
  void SpectrumScope::fft_decim_set() {
-     in_w = in + (m_Y/2 - m_Y/2/m_decimFactorV)*m_X;
-     if(m_decimFactorV > 1)
-         memset(in_w
-                + (m_Y/2 + m_Y/2/m_decimFactorV)*m_X, 0,
-         m_N/m_decimFactorV
-                *sizeof(std::complex<double>));
+     in_w = in + (m_Y/2-m_Y/2/m_decimFactorV)*m_X;
+     memset(in, 0, m_N*sizeof(std::complex<double>));
  }
  
  void SpectrumScope::fft_dyn_alloc() {
@@ -53,8 +49,8 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
          fftw_free(out);
      out   = (std::complex<double> *) fftw_alloc_complex(m_N);
      fft_decim_set();
-     decimPlan = fftw_plan_dft_1d(m_X,
-                                  reinterpret_cast<fftw_complex*>(decim),
+     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH,
+                                  reinterpret_cast<fftw_complex*>(decim+m_X/2 - m_X/2/m_decimFactorH),
                                   reinterpret_cast<fftw_complex*>(in_w),
                                           FFTW_BACKWARD, FFTW_MEASURE);
      inPlan = fftw_plan_dft_2d(m_X, m_Y,
@@ -77,32 +73,26 @@ SpectrumScope::~SpectrumScope()
 void SpectrumScope::refreshImpl()
 {
     int M = qMin((quint32) FRAME_SIZE, len());
-    long N = m_N;
-    
-    int m_maxX = m_X;
-    int m_maxY = m_Y;
+
     for(int32_t n = 0; n < M ; n++) {
         pre[n] = (double) data()[n] / 32768.0;
     }
     
     fftw_execute(prePlan);
     
-    memset(decim + m_X/m_decimFactorH, 0, (m_X - m_X/m_decimFactorH)*sizeof(std::complex<double>));
+//    memset(decim + m_X/m_decimFactorH, 0, (m_X - m_X/m_decimFactorH)*sizeof(std::complex<double>));
     
     fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
-                     reinterpret_cast<fftw_complex*>(in_w));
+                     reinterpret_cast<fftw_complex*>(in_w+m_X/2 - m_X/2/m_decimFactorH));
 
     for(quint32 n = 0; n < m_X ; n++) {
-        in_w[n] /= (double) (m_X);
+        in_w[n] /= (double) (m_X/m_decimFactorH);
     }
-    double mag_ = 0.0;
-    for(quint32 m = 0; m < m_X; m++) {
-        mag_ = qMax(mag_, abs(in_w[m]));
-    }
+    
     qint32 trigger_offset = -1;
-    for(quint32 n = 1; n < m_X ; n++) {
-        if(trigger_offset < 0 && real(in_w[n]) >= trigger_level * mag_ && real(in_w[n-1]) < trigger_level * mag_) {
-            trigger_offset = n-1;
+    for(quint32 n = m_X/2 - m_X/2/m_decimFactorH; n < m_X/2 + m_X/2/m_decimFactorH ; n++) {
+        if(trigger_offset < 0 && abs(in_w[n]) >= trigger_level && arg(in_w[n]) >= 0.0) {
+            trigger_offset = n;
             break;
         }
     }
@@ -113,18 +103,20 @@ void SpectrumScope::refreshImpl()
         memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
     in_r = in; //(((in_r - in) + m_L) % (m_N*2));
-    in_w = in_r + (((in_w - in_r) + m_X) % (m_N/m_decimFactorV));
+    in_w = in_r + (m_Y/2-m_Y/2/m_decimFactorV)*m_X
+                + (((in_w - (in_r + (m_Y/2-m_Y/2/m_decimFactorV)*m_X)) + m_X) % (m_N/m_decimFactorV));
 
-    fftw_execute(inPlan);
+    //fftw_execute(inPlan);
+    memcpy(out, in, m_N*sizeof(std::complex<double>));
     
-    for(quint32 n = 0; n < N ; n++) {
-        out[n] /= (double) N  ;
+    for(quint32 n = 0; n < m_N ; n++) {
+//        out[n] /= (double) N  ;
         out[n] *= scale;
     }
     
-    for(int x = 0; x < m_maxX ; x++) {
-        for(int y = 0; y < m_maxY ; y++) {
-            double mag = abs(out[x*m_maxY+y]);
+    for(quint32 x = 0; x < m_X ; x++) {
+        for(quint32 y = 0; y < m_Y ; y++) {
+            double mag = abs(out[y*m_X+x]);
             int x_ = (x+m_X/2) % m_X;
             int y_ = (y+m_Y/2) % m_Y;
             QColor color;
@@ -133,7 +125,7 @@ void SpectrumScope::refreshImpl()
                                  qMax((mag-1.0)*sat,0.0),
                                  1.0),
                           qMin(1.0, mag));
-            setPixelColor(x_, y_, color);
+            setPixelColor(x, y, color);
         }
     }
 }
@@ -167,13 +159,14 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         else if(ev->angleDelta().y() < 0.0)
             m_decimFactorV -= 1;
         m_decimFactorV = qBound(1U, m_decimFactorV, m_Y);
+        fft_decim_set();
         setBandwidthTitle();
     } else {
         if(ev->angleDelta().y() > 0.0)
-            trigger_level += .01;
+            trigger_level *= 1.01;
         else if(ev->angleDelta().y() < 0.0)
-            trigger_level -= .01;
-        trigger_level = qBound(-1.0, trigger_level, 1.0);
-        QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1%]").arg( trigger_level*100.0));
+            trigger_level /= 1.01;
+        trigger_level = qBound(1e-10, trigger_level, 1e10);
+        QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1 dB]").arg( log(trigger_level)*10.0));
     }
 }
