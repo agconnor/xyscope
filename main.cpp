@@ -92,11 +92,6 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
     return len;
 }
 
-
-
-
-
-
 class Window : public QMainWindow
 {
     Q_OBJECT
@@ -107,7 +102,7 @@ public:
     
     void initializeAudio(const QAudioDeviceInfo &deviceInfo);
     
-    void keyPressEvent(QKeyEvent * event) {
+    void keyPressEvent(QKeyEvent * event) override {
         switch(event->key())
         {
             case Qt::Key_Space:
@@ -115,13 +110,19 @@ public:
                 break;
         }
     }
+signals:
+    void resized();
     
+protected:
+    void resizeEvent(QResizeEvent *) override;
+
 private slots:
-    void toggleMode();
     void toggleSuspend();
     void deviceChanged(const QAudioDeviceInfo & device);
-    void sliderChanged(int value);
     void viewChanged(bool);
+    void resizeTimeout();
+    
+
 
 private:
     // Owned by layout
@@ -133,7 +134,6 @@ private:
 
     QScopedPointer<AudioInfo> m_audioInfo;
     QScopedPointer<QAudioInput> m_audioInput;
-    bool m_pullMode = true;
 
     QMenu * sourcesMenu;
     QMenu * viewsMenu;
@@ -143,8 +143,25 @@ private:
     AnalyticScope * analytic_scope;
     SpectrumScope * spectrum_scope;
     RasterImage * active_scope;
+    static const int RESIZE_TIMEOUT = 250;
+    QTimer* resizeTimer;
     
 };
+
+// override from QWidget that triggers whenever the user resizes the window
+void Window::resizeEvent(QResizeEvent*)
+{
+    resizeTimer->stop();
+    resizeTimer->start(RESIZE_TIMEOUT);
+
+}
+
+void Window::resizeTimeout()
+{
+    resizeTimer->stop();
+    emit resized();
+    
+}
 
 Window::Window() : QMainWindow(),
 timerConnection(*(new QMetaObject::Connection)),
@@ -195,6 +212,12 @@ audioUpdateConnection(*(new QMetaObject::Connection))
     timerConnection = connect(m_timer, &QTimer::timeout, m_canvas,[this](){
         m_canvas->update();
     });
+    
+    resizeTimer = new QTimer(this);
+    
+    connect(this, &Window::resized, m_canvas, &RasterView::postResize);
+    connect(resizeTimer, &QTimer::timeout, this, &Window::resizeTimeout);
+    QApplication::instance()->installEventFilter(this);
     m_timer->start(1000/refresh_rate);
     active_scope->start();
     initializeAudio(defaultDeviceInfo);
@@ -203,7 +226,7 @@ audioUpdateConnection(*(new QMetaObject::Connection))
 void Window::initializeAudio(const QAudioDeviceInfo &deviceInfo)
 {
     QAudioFormat format;
-    format.setSampleRate(48000);
+    format.setSampleRate(SAMPLE_RATE);
     format.setChannelCount(1);
     format.setSampleSize(16);
     format.setSampleType(QAudioFormat::SignedInt);
@@ -236,8 +259,8 @@ void Window::initializeAudio(const QAudioDeviceInfo &deviceInfo)
             if (l > 0)
                 m_audioInfo->write(buffer.constData(), l);
         });
-//    toggleMode();
 }
+
 void Window::viewChanged(bool)
 {
     const QAction *la = NULL;
@@ -256,45 +279,15 @@ void Window::viewChanged(bool)
         m_audioInput->resume();
     }
 }
-void Window::toggleMode()
-{
-//    m_audioInput->stop();
-//    toggleSuspend();
-//
-//    // Change bewteen pull and push modes
-//    if (m_pullMode) {
-//        m_audioInput->start(m_audioInfo.data());
-//    } else {
-//        auto io = m_audioInput->start();
-//        connect(io, &QIODevice::readyRead,
-//            [&, io]() {
-//
-//                qint64 len = m_audioInput->bytesReady();
-//                const int BufferSize = FRAME_SIZE;
-//                if (len > BufferSize)
-//                    len = BufferSize;
-//
-//                QByteArray buffer(len, 0);
-//                qint64 l = io->read(buffer.data(), len);
-//                if (l > 0)
-//                    m_audioInfo->write(buffer.constData(), l);
-//            });
-//    }
-//
-//    m_pullMode = !m_pullMode;
-}
 
 void Window::toggleSuspend()
 {
-    // toggle suspend/resume
     if (m_audioInput->state() == QAudio::SuspendedState || m_audioInput->state() == QAudio::StoppedState) {
         active_scope->start();
         m_audioInput->resume();
     } else if (m_audioInput->state() == QAudio::ActiveState) {
         active_scope->stop();
         m_audioInput->suspend();
-    } else if (m_audioInput->state() == QAudio::IdleState) {
-        // no-op
     }
 }
 
@@ -306,15 +299,6 @@ void Window::deviceChanged(const QAudioDeviceInfo & device)
     m_audioInput->disconnect(this);
     initializeAudio(device);
     active_scope->start();
-}
-
-void Window::sliderChanged(int value)
-{
-    qreal linearVolume = QAudio::convertVolume(value / qreal(100),
-                                               QAudio::LogarithmicVolumeScale,
-                                               QAudio::LinearVolumeScale);
-
-    m_audioInput->setVolume(linearVolume);
 }
 
 int main(int argc, char **argv)

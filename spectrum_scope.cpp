@@ -53,38 +53,38 @@ void SpectrumScope::refreshImpl()
     fftw_execute(inPlan);
     fftw_destroy_plan(inPlan);
 
-    std::complex<double> decim[m_X*m_K];
+    std::complex<double> decim[m_X];
     
-    for(quint32 n = 0; n < m_X*m_K/4; n++) {
+    for(quint32 n = 0; n < m_X/4; n++) {
         decim[n] = in_[n];// * (double)M/(double) (m_X*m_K);
-        decim[m_X*m_K/2-n-1] = in_[m_X*m_K/2-n-1];// * (double)M/(double) (m_X*m_K);
+        decim[m_X/2-n-1] = in_[m_X/2-n-1];// * (double)M/(double) (m_X*m_K);
     }
     
-    inPlan = fftw_plan_dft_1d(m_X*m_K, reinterpret_cast<fftw_complex*>(decim),
+    inPlan = fftw_plan_dft_1d(m_X, reinterpret_cast<fftw_complex*>(decim),
                               reinterpret_cast<fftw_complex*>(in_w), FFTW_BACKWARD, FFTW_ESTIMATE);
 
-    for(quint32 n = 0; n < m_X*m_K ; n++) {
-        in_w[n] /= (double) (m_X*m_K);
+    for(quint32 n = 0; n < m_X ; n++) {
+        in_w[n] /= (double) (m_X);
     }
     double mag_ = 0.0;
-    for(quint32 m = 0; m < m_X*m_K; m++) {
+    for(quint32 m = 0; m < m_X; m++) {
         mag_ = qMax(mag_, abs(in_w[m]));
     }
     qint32 trigger_offset = -1;
-    for(quint32 n = 1; n < m_X*m_K ; n++) {
+    for(quint32 n = 1; n < m_X ; n++) {
         if(trigger_offset < 0 && real(in_w[n]) >= trigger_level * mag_ && real(in_w[n-1]) < trigger_level * mag_) {
             trigger_offset = n-1;
             break;
         }
     }
-    if(trigger_offset >= 0 && trigger_offset < (int)m_X*(int)m_K-1) {
-        memcpy(in_w, in_w + trigger_offset, (m_X*m_K - trigger_offset)*sizeof(std::complex<double>));
-        memset(in_w+(m_X*m_K - trigger_offset), 0, trigger_offset*sizeof(std::complex<double>));
+    if(trigger_offset >= 0 && trigger_offset < (int)m_X-1) {
+        memcpy(in_w, in_w + trigger_offset, (m_X - trigger_offset)*sizeof(std::complex<double>));
+        memset(in_w+(m_X - trigger_offset), 0, trigger_offset*sizeof(std::complex<double>));
     } else if(trigger_offset < 0) {
-        memset(in_w, 0, m_X*m_K*sizeof(std::complex<double>));
+        memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
     in_r = in; //(((in_r - in) + m_L) % (m_N*2));
-    in_w = in_r + (((in_w - in_r) + m_X*m_K) % m_N);
+    in_w = in_r + (((in_w - in_r) + m_X) % m_N);
 //    in_w = in + (((in_w - in) + m_X) % m_N);
     if(in_r - in > m_N) {
         std::complex<double> tmp[m_N];
@@ -125,7 +125,7 @@ void SpectrumScope::refreshImpl()
 }
 
 
-void SpectrumScope::resizeEvent(QResizeEvent *) {
+void SpectrumScope::postResize(){
     size_t maxX = rect().width();
     size_t maxY = rect().height();
     m_X = maxX;
@@ -133,12 +133,12 @@ void SpectrumScope::resizeEvent(QResizeEvent *) {
     m_N = m_X * m_Y;
     delete[] in;
     in = new std::complex<double>[m_N*2];
-    m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
+//    m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
     in_r = in;
     in_w = in+m_N;
     delete[] out;
     out = new std::complex<double>[m_N];
-    QApplication::activeWindow()->setWindowTitle(QString("[∆ƒ (H): %1 KHz] [∆T (V): %2 ms]").arg( m_X*12.0 / 1000.0).arg((double)m_Y*(double)FRAME_SIZE/48.0/(double)m_K));
+    setBandwidthTitle();
 }
 
 void SpectrumScope::wheelEvent(QWheelEvent *ev)
@@ -156,11 +156,11 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1] [Sat.: %2]").arg( scale).arg(sat));
     } else if(QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
         if(ev->angleDelta().y() > 0.0)
-            m_K += 1;
+            m_decimFactorV += 1;
         else if(ev->angleDelta().y() < 0.0)
-            m_K -= 1;
-        m_K = qBound(1U, m_K, (FRAME_SIZE-1)/m_X-1);
-        QApplication::activeWindow()->setWindowTitle(QString("[∆ƒ (H): %1 KHz] [∆T (V): %2 ms]").arg( m_X*12.0 / 1000.0).arg((double)m_Y*(double)FRAME_SIZE/48.0/(double)m_K));
+            m_decimFactorV -= 1;
+        m_decimFactorV = qBound(1U, m_decimFactorV, m_Y);
+        setBandwidthTitle();
     } else {
         if(ev->angleDelta().y() > 0.0)
             trigger_level += .01;

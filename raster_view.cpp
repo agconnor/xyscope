@@ -18,10 +18,15 @@ void RasterView::paintEvent(QPaintEvent *)
     painter.drawImage(painter.viewport(), *m_image, m_image->rect());
 }
 
-void RasterView::resizeEvent(QResizeEvent *e) {
-    size_t maxX = rect().width()/3;
-    size_t maxY = rect().height()/3;
-    (*m_image) = m_image->scaled(maxX, maxY);
-    ((RasterImage *) m_image)->resizeEvent(e);
+void RasterView::postResize() {
+    size_t maxX = rect().width()/PIXEL_SCALE;
+    size_t maxY = rect().height()/PIXEL_SCALE;
+    RasterImage * rim = (RasterImage *) m_image;
+    if(rim->running()) {
+        rim->stop();
+        (*m_image) = m_image->scaled(maxX, maxY);
+        ((RasterImage *) m_image)->postResize();
+        rim->start();
+    }
 }
 

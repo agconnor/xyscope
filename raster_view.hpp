@@ -33,8 +33,10 @@ public:
         rim->refresh(_data, len);
     }
     QImage * & image() {return m_image;}
+    
+public slots:
+    virtual void postResize();
 protected:
-    virtual void resizeEvent(QResizeEvent *) override;
     virtual void paintEvent(QPaintEvent *) override;
     virtual void wheelEvent(QWheelEvent *ev) override {
         RasterImage * rim = (RasterImage *)m_image;

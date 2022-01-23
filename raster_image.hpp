@@ -16,13 +16,14 @@
 
 #define FRAME_SPAN 64
 #define FRAME_SIZE 4096
-#define PIXEL_SCALE 2
+#define PIXEL_SCALE 3
 #define INIT_SIZE 600
+#define SAMPLE_RATE 48000
 
 class RasterImage : public QImage {
     
 public:
-    explicit RasterImage(QWidget * parent) : QImage(INIT_SIZE/PIXEL_SCALE,  //parent->rect().width(),
+    explicit RasterImage(QWidget *) : QImage(INIT_SIZE/PIXEL_SCALE,  //parent->rect().width(),
                INIT_SIZE/PIXEL_SCALE, //parent->rect().height(),
                QImage::Format_RGB888){
         m_mutex = new QMutex();
@@ -37,10 +38,9 @@ public:
     qint16 * & data()  {return m_data;}
     quint32 & len()    {return m_len;}
     void start() {
-        if(m_mutex->tryLock()) {
-            m_running = 1;
-            m_mutex->unlock();
-        }
+        m_mutex->lock();
+        m_running = 1;
+        m_mutex->unlock();
         
     }
     void stop()  {
@@ -63,7 +63,7 @@ public:
     bool running() {return m_running;}
     
     virtual void wheelEvent(QWheelEvent *ev) {}
-    virtual void resizeEvent(QResizeEvent *) {}
+    virtual void postResize() {}
 protected:
     virtual void refreshImpl() = 0;
 private:

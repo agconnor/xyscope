@@ -18,24 +18,42 @@ public:
     explicit SpectrumScope(QWidget * parent);
     ~SpectrumScope();
     
-    void resizeEvent(QResizeEvent *) override;
+    void postResize();
     void wheelEvent(QWheelEvent *ev) override;
 protected:
     void refreshImpl() override;
+    
 private:
     
-    int m_doRefresh = 0;
-    std::complex<double> *in, *out;
+    std::complex<double> *decim = NULL, *in = NULL, *out = NULL;
     std::complex<double> *in_w = NULL, *in_r = NULL;
-    fftw_plan inPlan;
+    double *pre;
+    
+    fftw_plan prePlan, decimPlan, inPlan;
     
     quint32 m_X = 0;
     quint32 m_Y = 0;
     quint32 m_N = 0;
-    quint32 m_K = 1;
     
     qreal scale = 1.0;
-    qreal sat = 0.02;
-    qreal trigger_level = 0.0;
+    qreal sat = 0.5;
+    qreal trigger_level = 0.2;
+    quint32 m_decimFactorV = 4;
+    quint32 m_decimFactorH = 2;
+    
+    void fft_dyn_alloc();
+    void fft_decim_set();
+    void setBandwidthTitle() {
+        QApplication::activeWindow()
+          ->setWindowTitle(
+          QString().asprintf(
+            "[∆ƒ (H): %'d Hz] [∆T (V): %'d ms]",
+              (int) ((double) m_X *
+                ((double)SAMPLE_RATE/
+                        (double)FRAME_SIZE/
+                        (double) m_decimFactorH)),
+              (int) ((double) m_Y *
+                (double)FRAME_SIZE/48.0/(double)m_decimFactorV)));
+    }
 };
 #endif /* spectrum_view_hpp */

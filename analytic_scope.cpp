@@ -20,14 +20,25 @@
 
 AnalyticScope::AnalyticScope(QWidget * parent) : RasterImage(parent)
 {
-    in   = new std::complex<double>[len()];
     fftw_init_threads();
-    fftw_plan_with_nthreads(2);
+    fftw_plan_with_nthreads(4);
+    in   = (std::complex<double> *) fftw_alloc_complex(FRAME_SIZE);
+    pre = (double *) fftw_alloc_real(FRAME_SIZE);
+    inPlan = fftw_plan_dft_r2c_1d(FRAME_SIZE,
+                                  pre,
+                                  reinterpret_cast<fftw_complex*>(in), FFTW_MEASURE);
+    outPlan = fftw_plan_dft_1d(FRAME_SIZE,  reinterpret_cast<fftw_complex*>(in),
+                               reinterpret_cast<fftw_complex*>(in), FFTW_BACKWARD, FFTW_MEASURE);
+
+}
+
+void AnalyticScope::fft_dyn_alloc() {
+    
 }
 
 AnalyticScope::~AnalyticScope()
 {
-    delete in;
+    fftw_free(in);
 }
 
 void AnalyticScope::refreshImpl()
@@ -35,34 +46,22 @@ void AnalyticScope::refreshImpl()
     int x, y;
     int N = qMin((quint32) FRAME_SIZE, len());
     
-    
-    
-    double pre[N];
     for(int32_t n = 0; n < N ; n++) {
         pre[n] = (double) data()[n] / 32768.0;
     }
-    inPlan = fftw_plan_dft_r2c_1d(N,  pre,
-                                  reinterpret_cast<fftw_complex*>(in), FFTW_ESTIMATE);
     
     fftw_execute(inPlan);
  
-    
-    for(int32_t n = N/2; n < N ; n++) {
+    for(int32_t n = N/2+1; n < FRAME_SIZE ; n++) {
         in[n] = 0.0;
     }
-    
-    fftw_destroy_plan(inPlan);
-    outPlan = fftw_plan_dft_1d(N,  reinterpret_cast<fftw_complex*>(in),
-                               reinterpret_cast<fftw_complex*>(in), FFTW_BACKWARD, FFTW_ESTIMATE);
     
     fftw_execute(outPlan);
     
     for(int32_t n = 0; n < N ; n++) {
         in[n] /= (double) N / m_scale;
     }
-    
-    fftw_destroy_plan(outPlan);
-    
+
     int trigger_offset = -1;
     std::complex<double> trigger_z;
     
@@ -107,7 +106,7 @@ void AnalyticScope::refreshImpl()
     QPainter imgPainter(this);
     QColor color;
     color.setRgbF(0.0, 0.0, 0.0);
-    color.setAlphaF(.15);
+    color.setAlphaF(.05);
     imgPainter.setBrush(color);
     imgPainter.setPen(Qt::NoPen);
     imgPainter.drawRect(0,0,width(), height());
@@ -163,7 +162,7 @@ void AnalyticScope::wheelEvent(QWheelEvent *ev)
                 trigger_level += .01;
             else if(ev->angleDelta().y() < 0.0)
                 trigger_level -= .01;
-//            trigger_level = qBound(-1.0, trigger_level, 1.0);
+            
             QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1]").arg( trigger_level));
             
         }
