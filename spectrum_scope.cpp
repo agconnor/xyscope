@@ -71,6 +71,7 @@ SpectrumScope::~SpectrumScope()
     fftw_destroy_plan(inPlan);
     fftw_free((fftw_complex*)in);
     fftw_free((fftw_complex*)out);
+    fftw_cleanup_threads();
 }
 
 void SpectrumScope::refreshImpl()
@@ -86,9 +87,7 @@ void SpectrumScope::refreshImpl()
     
     fftw_execute(prePlan);
     
-    for(quint32 n = 0; n < m_X/4; n++) {
-        decim[m_X/2-n-1] = decim[FRAME_SIZE/2-n-1];
-    }
+    memset(decim + m_X/m_decimFactorH, 0, (m_X - m_X/m_decimFactorH)*sizeof(std::complex<double>));
     
     fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
                      reinterpret_cast<fftw_complex*>(in_w));
