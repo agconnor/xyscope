@@ -276,6 +276,7 @@ void Window::viewChanged(bool)
             active_scope = spectrum_scope;
         m_canvas->image() = active_scope;
         active_scope->start();
+        m_canvas->postResize();
         m_audioInput->resume();
     }
 }

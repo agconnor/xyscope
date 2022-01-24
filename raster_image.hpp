@@ -16,8 +16,8 @@
 
 #define FRAME_SPAN 64
 #define FRAME_SIZE 4096
-#define PIXEL_SCALE 3
-#define INIT_SIZE 600
+#define PIXEL_SCALE 2
+#define INIT_SIZE 800
 #define SAMPLE_RATE 48000
 
 class RasterImage : public QImage {

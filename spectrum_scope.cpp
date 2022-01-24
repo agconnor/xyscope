@@ -39,12 +39,16 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
  void SpectrumScope::fft_decim_set() {
      in_w = in + (m_Y/2-m_scanLines/2)*m_X;
      memset(in, 0, m_N*sizeof(std::complex<double>));
+     decimPlan = fftw_plan_dft_1d(m_inputSamples,
+                                  reinterpret_cast<fftw_complex*>(decim+m_X/2 - m_inputSamples/2),
+                                  reinterpret_cast<fftw_complex*>(in_w),
+                                          FFTW_BACKWARD, FFTW_MEASURE);
  }
  
  void SpectrumScope::fft_dyn_alloc() {
      if(in != NULL)
          fftw_free(in);
-     in   = (std::complex<double> *) fftw_alloc_complex(m_N*2);
+     in   = (std::complex<double> *) fftw_alloc_complex(m_N);
 
      if(out != NULL)
          fftw_free(out);
@@ -52,10 +56,6 @@ SpectrumScope::SpectrumScope(QWidget *parent) : RasterImage(parent)
      fft_decim_set();
 
      
-     decimPlan = fftw_plan_dft_1d(m_X/m_decimFactorH,
-                                  reinterpret_cast<fftw_complex*>(decim+m_X/2 - m_X/2/m_decimFactorH),
-                                  reinterpret_cast<fftw_complex*>(in_w),
-                                          FFTW_BACKWARD, FFTW_MEASURE);
      inPlan = fftw_plan_dft_2d(m_X, m_Y,
                  reinterpret_cast<fftw_complex*>(out),
                  reinterpret_cast<fftw_complex*>(out),
@@ -83,21 +83,21 @@ void SpectrumScope::refreshImpl()
     }
     
     fftw_execute(prePlan);
-    for(quint32 n = 0; n < m_X/m_decimFactorH*FRAME_SIZE/M/2; n++) {
+    for(quint32 n = 0; n < m_inputSamples*FRAME_SIZE/M/2; n++) {
         decim[n] = decim[n*(FRAME_SIZE/M)];
-        decim[m_X/m_decimFactorH*(FRAME_SIZE/M)-n-1] = decim[FRAME_SIZE-(n*(FRAME_SIZE/M)+1)];
+        decim[m_inputSamples*(FRAME_SIZE/M)-n-1] = decim[FRAME_SIZE-(n*(FRAME_SIZE/M)+1)];
     }
 
-    quint32 x_offset = m_X/2 - m_X/2/m_decimFactorH;
-    memset(decim + m_X/m_decimFactorH*(FRAME_SIZE/M), 0,
-           (FRAME_SIZE-m_X/m_decimFactorH*(FRAME_SIZE/M))*sizeof(std::complex<double>));
+    quint32 x_offset = m_X/2 - m_inputSamples/2;
+    memset(decim + m_inputSamples*(FRAME_SIZE/M), 0,
+           (FRAME_SIZE-m_inputSamples*(FRAME_SIZE/M))*sizeof(std::complex<double>));
     
     
     fftw_execute_dft(decimPlan, reinterpret_cast<fftw_complex*>(decim),
                      reinterpret_cast<fftw_complex*>(in_w+x_offset));
 
     for(quint32 n = 0; n < m_X ; n++) {
-        in_w[n] /= (double) (m_X/m_decimFactorH);
+        in_w[n] /= (double) (m_inputSamples);
     }
     
     qint32 trigger_offset = -1;
@@ -117,7 +117,7 @@ void SpectrumScope::refreshImpl()
     } else if(trigger_offset < 0) {
         memset(in_w, 0, m_X*sizeof(std::complex<double>));
     }
-    in_r = in; //(((in_r - in) + m_L) % (m_N*2));
+    in_r = in;
     in_w = in_r + (m_Y/2-m_scanLines/2)*m_X
                 + (((in_w - (in_r + (m_Y/2-m_scanLines/2)*m_X)) + m_X) % (m_scanLines*m_X));
 
@@ -131,7 +131,7 @@ void SpectrumScope::refreshImpl()
     fftw_execute(inPlan);
     
     for(quint32 n = 0; n < m_N ; n++) {
-//        out[n] /= (double) N  ;
+        out[n] /= (double) m_scanLines * (double) m_inputSamples;
         out[n] *= scale;
     }
     
@@ -155,10 +155,13 @@ void SpectrumScope::refreshImpl()
 void SpectrumScope::postResize() {
     if(m_scanLines == m_Y)
         m_scanLines = rect().height();
+    if(m_inputSamples == m_X)
+        m_inputSamples = rect().width();
     m_X = rect().width();
     m_Y = rect().height();
     m_N = m_X * m_Y;
-    m_scanLines = qMin(m_scanLines, m_Y);
+    m_scanLines    = qMin(m_scanLines,    m_Y);
+    m_inputSamples = qMin(m_inputSamples, m_X);
     fft_dyn_alloc();
     setBandwidthTitle();
 }
@@ -173,9 +176,9 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         scale = qBound(1e-10, scale, 1e10);
         
         if(ev->angleDelta().x() > 0.0)
-            sat = qBound(0.01, sat+.01, 1.0);
+            sat = qBound(0.00, sat+.01, 1.0);
         else if(ev->angleDelta().x() < 0.0)
-            sat = qBound(0.01, sat-.01, 1.0);
+            sat = qBound(0.00, sat-.01, 1.0);
         QApplication::activeWindow()->setWindowTitle(QString("[Scale: %1 dB] [Sat.: %2]").arg( log(scale)*10).arg(sat));
     } else if(QApplication::queryKeyboardModifiers().testFlag(Qt::AltModifier)) {
         if(ev->angleDelta().y() > 0.0)
@@ -183,6 +186,13 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         else if(ev->angleDelta().y() < 0.0)
             m_scanLines -= 1;
         m_scanLines = qBound(1U, m_scanLines, m_Y);
+        
+        if(ev->angleDelta().x() > 0.0)
+            m_inputSamples += 1;
+        else if(ev->angleDelta().x() < 0.0)
+            m_inputSamples -= 1;
+        m_inputSamples = qBound(1U, m_inputSamples, m_X);
+        
         fft_decim_set();
         setBandwidthTitle();
     } else {

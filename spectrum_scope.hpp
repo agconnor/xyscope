@@ -18,7 +18,7 @@ public:
     explicit SpectrumScope(QWidget * parent);
     ~SpectrumScope();
     
-    void postResize();
+    void postResize() override;
     void wheelEvent(QWheelEvent *ev) override;
 protected:
     void refreshImpl() override;
@@ -38,7 +38,7 @@ private:
     qreal sat = 0.5;
     qreal trigger_level = 0.1;
     quint32 m_scanLines = INIT_SIZE/PIXEL_SCALE/4;
-    quint32 m_decimFactorH = 2;
+    quint32 m_inputSamples = INIT_SIZE/PIXEL_SCALE/4;
     
     void fft_dyn_alloc();
     void fft_decim_set();
@@ -47,10 +47,8 @@ private:
           ->setWindowTitle(
           QString().asprintf(
             "[∆ƒ (H): %'d Hz] [∆T (V): %'d ms]",
-              (int) ((double) m_X *
-                ((double)SAMPLE_RATE/
-                        (double)FRAME_SIZE/
-                        (double) m_decimFactorH)),
+              (int) ((double) m_inputSamples *
+                ((double)SAMPLE_RATE/ (double)FRAME_SIZE)),
               (int) ((double) m_scanLines *
                 (double)FRAME_SIZE
                      /((double)SAMPLE_RATE / 1000.0))));
