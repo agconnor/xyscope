@@ -25,7 +25,7 @@ protected:
     
 private:
     
-    std::complex<double> *pre = NULL, *decim = NULL, *in = NULL, *out = NULL;
+    std::complex<double> *pre = NULL, *decim = NULL, *post = NULL, *in = NULL, *out = NULL;
     std::complex<double> *in_w = NULL, *in_r = NULL;
     
     fftw_plan prePlan, decimPlan, inPlan;
@@ -33,12 +33,13 @@ private:
     quint32 m_X = 0;
     quint32 m_Y = 0;
     quint32 m_N = 0;
+    quint32 m_W = 0;
     
-    qreal scale = 1.0;
+    qreal scale = 0.0;
     qreal sat = 0.5;
-    qreal trigger_level = 0.1;
+    qreal trigger_level = 1.0;
     quint32 m_scanLines = INIT_SIZE/PIXEL_SCALE/4;
-    quint32 m_inputSamples = INIT_SIZE/PIXEL_SCALE/4;
+    quint32 m_inputSamples = 3*INIT_SIZE/PIXEL_SCALE/4;
     
     void fft_dyn_alloc();
     void fft_decim_set();
