@@ -208,7 +208,7 @@ void SpectrumScope::wheelEvent(QWheelEvent *ev)
         if(ev->angleDelta().y() > 0.0)
             trigger_level += .01;
         else if(ev->angleDelta().y() < 0.0)
-            trigger_level -= .01;
+            trigger_level -= .01    ;
         QApplication::activeWindow()->setWindowTitle(QString("[Trigger: %1 dB]").arg(trigger_level*10));
     }
 }
